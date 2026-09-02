@@ -2,66 +2,46 @@ const express = require("express");
 const { chromium } = require("playwright");
 
 const app = express();
+const PORT = process.env.PORT || 3000;
+
+// ============================================================
+// CONFIGURATION
+// ============================================================
+
+const BOT_API_KEY = process.env.BOT_API_KEY || "";
+
+const FAPSHI_API_URL ="https://fapshi.com";
+
+const FAPSHI_API_KEY ="FAK_a7c6dfdb7ec1612bbaec4e314ecfacad";
+
+const FAPSHI_API_USER =
+  process.env.FAPSHI_API_USER || "523f8249-0b49-48dc-8dfc-a1395caeb3e9";
+
+// Informations fixes du paiement
+const PAYMENT_NAME = "Junior Kameni";
+const PAYMENT_EMAIL = "antigravity2371@gmail.com";
+
+// Montant minimum
+const MIN_AMOUNT = 4000;
+
+// ============================================================
+// MIDDLEWARE
+// ============================================================
 
 app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true }));
 
-const PORT = process.env.PORT || 3000;
-const BOT_API_KEY = process.env.BOT_API_KEY;
+// ============================================================
+// UTILITAIRES
+// ============================================================
 
-function normalize(text = "") {
-  return String(text)
-    .toLowerCase()
+function normalize(value) {
+  return String(value || "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
+    .toLowerCase()
     .trim();
 }
-
-const aliases = {
-  name: [
-    "name",
-    "full name",
-    "fullname",
-    "nom",
-    "nom complet",
-    "nom et prenom",
-    "customer name",
-    "customer full name"
-  ],
-
-  amount: [
-    "amount",
-    "montant",
-    "total",
-    "price",
-    "prix",
-    "cost",
-    "somme",
-    "payment amount",
-    "montant paiement"
-  ],
-
-  email: [
-    "email",
-    "e mail",
-    "mail",
-    "courriel",
-    "adresse email",
-    "email address"
-  ],
-
-  phone: [
-    "phone",
-    "telephone",
-    "tel",
-    "mobile",
-    "gsm",
-    "numero",
-    "numero telephone",
-    "phone number",
-    "telephone number"
-  ]
-};
 
 function isValidUrl(value) {
   try {
@@ -76,213 +56,228 @@ function isValidUrl(value) {
   }
 }
 
-function scoreField(candidate, requestedName) {
-  const key = normalize(requestedName);
+function cleanPhone(phone) {
+  return String(phone || "")
+    .trim()
+    .replace(/[^\d+]/g, "");
+}
 
-  const words = [
-    key,
-    ...(aliases[requestedName] || []),
-    ...(aliases[key] || [])
-  ].map(normalize);
+function isValidPhone(phone) {
+  const cleaned = cleanPhone(phone);
+
+  const digits = cleaned.replace(/\D/g, "");
+
+  return digits.length >= 8 && digits.length <= 15;
+}
+
+function generateExternalId() {
+  return (
+    "BOTFAST-" +
+    Date.now() +
+    "-" +
+    Math.random().toString(36).substring(2, 10)
+  );
+}
+
+// ============================================================
+// DÉTECTION DES CHAMPS
+// ============================================================
+
+const FIELD_ALIASES = {
+  name: [
+    "name",
+    "fullname",
+    "full name",
+    "nom",
+    "nom complet",
+    "customer name",
+    "customer",
+    "client",
+    "username",
+    "user name"
+  ],
+
+  amount: [
+    "amount",
+    "montant",
+    "price",
+    "prix",
+    "total",
+    "payment amount",
+    "amount to pay",
+    "montant a payer",
+    "montant à payer"
+  ],
+
+  email: [
+    "email",
+    "e-mail",
+    "mail",
+    "email address",
+    "adresse email",
+    "adresse e-mail"
+  ],
+
+  phone: [
+    "phone",
+    "telephone",
+    "téléphone",
+    "tel",
+    "mobile",
+    "phone number",
+    "numero",
+    "numéro",
+    "numero de telephone",
+    "numéro de téléphone"
+  ]
+};
+
+function scoreField(field, type) {
+  const aliases = FIELD_ALIASES[type] || [];
+
+  const values = [
+    field.name,
+    field.id,
+    field.placeholder,
+    field.ariaLabel,
+    field.label,
+    field.autocomplete,
+    field.inputmode,
+    field.parentText,
+    field.type
+  ]
+    .filter(Boolean)
+    .map(normalize);
 
   let score = 0;
 
-  const strongProperties = [
-    candidate.name,
-    candidate.id,
-    candidate.placeholder,
-    candidate.ariaLabel,
-    candidate.label,
-    candidate.autocomplete
-  ].map(normalize);
+  for (const value of values) {
+    for (const alias of aliases) {
+      const normalizedAlias = normalize(alias);
 
-  const weakProperties = [
-    candidate.parentText,
-    candidate.nearbyText
-  ].map(normalize);
-
-  for (const word of words) {
-    if (!word) continue;
-
-    for (const property of strongProperties) {
-      if (!property) continue;
-
-      if (property === word) {
+      if (value === normalizedAlias) {
         score += 100;
-      } else if (property.includes(word)) {
-        score += 50;
+      } else if (value.includes(normalizedAlias)) {
+        score += 40;
       }
-    }
-
-    for (const property of weakProperties) {
-      if (
-        property &&
-        property.includes(word)
-      ) {
-        score += 15;
-      }
-    }
-  }
-
-  const type = normalize(candidate.type);
-  const inputmode = normalize(candidate.inputmode);
-
-  if (key === "name") {
-    if (candidate.autocomplete === "name") {
-      score += 80;
-    }
-
-    if (type === "text") {
-      score += 10;
-    }
-  }
-
-  if (key === "email") {
-    if (type === "email") {
-      score += 100;
-    }
-
-    if (candidate.autocomplete === "email") {
-      score += 60;
-    }
-  }
-
-  if (key === "phone") {
-    if (type === "tel") {
-      score += 100;
-    }
-
-    if (inputmode === "tel") {
-      score += 80;
-    }
-
-    if (candidate.autocomplete === "tel") {
-      score += 60;
-    }
-  }
-
-  if (key === "amount") {
-    if (type === "number") {
-      score += 60;
-    }
-
-    if (
-      inputmode === "numeric" ||
-      inputmode === "decimal"
-    ) {
-      score += 50;
     }
   }
 
   return score;
 }
 
-function isPaymentButton(text = "") {
-  const value = normalize(text);
+function isPaymentButton(button) {
+  const text = normalize(
+    [
+      button.text,
+      button.value,
+      button.ariaLabel,
+      button.title,
+      button.name
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
 
   const paymentWords = [
-    "payer",
     "pay",
+    "payer",
     "payment",
-    "pay now",
-    "confirmer le paiement",
-    "confirm payment",
-    "valider le paiement",
-    "effectuer le paiement",
-    "proceed to payment",
-    "make payment"
+    "paiement",
+    "continue",
+    "continuer",
+    "proceed",
+    "valider",
+    "confirm",
+    "confirmer",
+    "checkout",
+    "momo",
+    "mobile money",
+    "orange money",
+    "mtn",
+    "orange"
   ];
 
-  return paymentWords.some(word =>
-    value.includes(normalize(word))
+  return paymentWords.some((word) =>
+    text.includes(normalize(word))
   );
 }
 
-app.get("/", (req, res) => {
-  res.json({
-    status: "ok",
-    message: "Payment Bot is running"
-  });
-});
+// ============================================================
+// FAPSHI REQUEST
+// ============================================================
 
-app.get("/health", (req, res) => {
-  res.json({
-    status: "healthy"
-  });
-});
+async function fapshiRequest(method, path, body = undefined) {
+  const url =
+    FAPSHI_API_URL.replace(/\/$/, "") +
+    path;
 
-app.post("/api/automate", async (req, res) => {
-  let browser = null;
+  const options = {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      apikey: FAPSHI_API_KEY,
+      apiuser: FAPSHI_API_USER
+    }
+  };
+
+  if (body !== undefined) {
+    options.body = JSON.stringify(body);
+  }
+
+  const response = await fetch(url, options);
+
+  const text = await response.text();
+
+  let data;
 
   try {
-    if (
-      BOT_API_KEY &&
-      req.headers["x-api-key"] !== BOT_API_KEY
-    ) {
-      return res.status(401).json({
-        success: false,
-        reason: "unauthorized"
-      });
-    }
+    data = JSON.parse(text);
+  } catch {
+    data = {
+      raw: text
+    };
+  }
 
-    const {
-      url,
-      fields,
-      submit = false
-    } = req.body;
-
-    if (
-      !url ||
-      typeof url !== "string"
-    ) {
-      return res.status(400).json({
-        success: false,
-        reason: "invalid_url"
-      });
-    }
-
-    if (!isValidUrl(url)) {
-      return res.status(400).json({
-        success: false,
-        reason:
-          "only_http_https_allowed"
-      });
-    }
-
-    if (
-      !fields ||
-      typeof fields !== "object" ||
-      Array.isArray(fields) ||
-      Object.keys(fields).length === 0
-    ) {
-      return res.status(400).json({
-        success: false,
-        reason: "invalid_fields"
-      });
-    }
-
-    console.log(
-      "================================="
+  if (!response.ok) {
+    const error = new Error(
+      data?.message ||
+        data?.error ||
+        `Fapshi HTTP ${response.status}`
     );
 
-    console.log("Opening:", url);
+    error.status = response.status;
+    error.data = data;
 
-    console.log(
-      "Requested fields:",
-      Object.keys(fields)
-    );
+    throw error;
+  }
 
-    console.log(
-      "Submit:",
-      submit
-    );
+  return data;
+}
 
-    console.log(
-      "================================="
-    );
+// ============================================================
+// AUTOMATISATION PLAYWRIGHT
+// ============================================================
 
+async function automatePayment({
+  url,
+  fields,
+  submit = true
+}) {
+  if (!isValidUrl(url)) {
+    throw new Error("URL de paiement invalide.");
+  }
+
+  let browser;
+
+  try {
     browser = await chromium.launch({
-      headless: true
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage"
+      ]
     });
 
     const page = await browser.newPage({
@@ -292,633 +287,657 @@ app.post("/api/automate", async (req, res) => {
       }
     });
 
-    page.setDefaultTimeout(15000);
-
     const consoleErrors = [];
+    const pageErrors = [];
 
-    page.on("console", msg => {
+    page.on("console", (msg) => {
       if (msg.type() === "error") {
-        consoleErrors.push(
-          msg.text()
-        );
-
-        console.log(
-          "BROWSER ERROR:",
-          msg.text()
-        );
+        consoleErrors.push(msg.text());
       }
     });
 
-    const pageErrors = [];
-
-    page.on("pageerror", error => {
-      pageErrors.push(
-        error.message
-      );
-
-      console.log(
-        "PAGE ERROR:",
-        error.message
-      );
-    });
-
-    const networkEvents = [];
-
-    page.on("response", response => {
-      try {
-        const responseUrl =
-          response.url();
-
-        if (
-          /pay|payment|fapshi|transaction|checkout/i.test(
-            responseUrl
-          )
-        ) {
-          const event = {
-            type: "response",
-            status:
-              response.status(),
-            url:
-              responseUrl
-          };
-
-          networkEvents.push(event);
-
-          console.log(
-            "NETWORK:",
-            response.status(),
-            responseUrl
-          );
-        }
-      } catch {}
+    page.on("pageerror", (error) => {
+      pageErrors.push(String(error));
     });
 
     await page.goto(url, {
-      waitUntil:
-        "domcontentloaded",
-      timeout: 30000
+      waitUntil: "domcontentloaded",
+      timeout: 60000
     });
 
     try {
-      await page.waitForLoadState(
-        "networkidle",
-        {
-          timeout: 10000
-        }
-      );
-    } catch {}
+      await page.waitForLoadState("networkidle", {
+        timeout: 15000
+      });
+    } catch {
+      // Certaines applications React/Next ne terminent jamais networkidle.
+    }
 
     await page.waitForTimeout(2000);
 
-    console.log(
-      "Page loaded:",
-      await page.title()
-    );
+    // --------------------------------------------------------
+    // Récupération de tous les champs visibles
+    // --------------------------------------------------------
 
-    const candidates =
-      await page.locator(
-        "input, textarea, select"
-      ).evaluateAll(elements => {
+    const candidates = await page.locator(
+      "input, textarea, select"
+    ).evaluateAll((elements) => {
+      return elements
+        .filter((el) => {
+          const style = window.getComputedStyle(el);
 
-        const getText = element => {
-          if (!element) return "";
+          const rect = el.getBoundingClientRect();
 
           return (
-            element.innerText ||
-            element.textContent ||
-            ""
-          )
-            .replace(/\s+/g, " ")
-            .trim()
-            .slice(0, 300);
-        };
+            style.display !== "none" &&
+            style.visibility !== "hidden" &&
+            rect.width > 0 &&
+            rect.height > 0 &&
+            !el.disabled
+          );
+        })
+        .map((el) => {
+          let label = "";
 
-        return elements.map(
-          (el, index) => {
+          if (el.id) {
+            const labelElement =
+              document.querySelector(
+                `label[for="${CSS.escape(el.id)}"]`
+              );
 
-            let label = "";
-
-            if (el.id) {
-              const associated =
-                document.querySelector(
-                  `label[for="${CSS.escape(
-                    el.id
-                  )}"]`
-                );
-
-              if (associated) {
-                label =
-                  getText(
-                    associated
-                  );
-              }
+            if (labelElement) {
+              label = labelElement.innerText || "";
             }
-
-            const parentLabel =
-              el.closest("label");
-
-            if (
-              !label &&
-              parentLabel
-            ) {
-              label =
-                getText(
-                  parentLabel
-                );
-            }
-
-            const parent =
-              el.parentElement ||
-              el.closest("div");
-
-            const nearbyText =
-              parent
-                ? getText(parent)
-                : "";
-
-            return {
-              index,
-
-              tag:
-                el.tagName.toLowerCase(),
-
-              type:
-                el.getAttribute(
-                  "type"
-                ) || "",
-
-              name:
-                el.getAttribute(
-                  "name"
-                ) || "",
-
-              id:
-                el.id || "",
-
-              placeholder:
-                el.getAttribute(
-                  "placeholder"
-                ) || "",
-
-              ariaLabel:
-                el.getAttribute(
-                  "aria-label"
-                ) || "",
-
-              autocomplete:
-                el.getAttribute(
-                  "autocomplete"
-                ) || "",
-
-              inputmode:
-                el.getAttribute(
-                  "inputmode"
-                ) || "",
-
-              label,
-
-              parentText:
-                nearbyText,
-
-              nearbyText,
-
-              visible:
-                !!(
-                  el.offsetWidth ||
-                  el.offsetHeight ||
-                  el.getClientRects()
-                    .length
-                ),
-
-              disabled:
-                el.disabled
-            };
           }
+
+          if (!label) {
+            const parent = el.closest("label");
+
+            if (parent) {
+              label = parent.innerText || "";
+            }
+          }
+
+          const parent =
+            el.parentElement?.innerText || "";
+
+          return {
+            name: el.getAttribute("name") || "",
+            id: el.id || "",
+            placeholder:
+              el.getAttribute("placeholder") || "",
+            ariaLabel:
+              el.getAttribute("aria-label") || "",
+            autocomplete:
+              el.getAttribute("autocomplete") || "",
+            inputmode:
+              el.getAttribute("inputmode") || "",
+            type:
+              el.getAttribute("type") || "",
+            label,
+            parentText: parent.substring(0, 300),
+            value: el.value || ""
+          };
+        });
+    });
+
+    const selectedFields = {};
+
+    // --------------------------------------------------------
+    // Recherche du meilleur champ pour chaque donnée
+    // --------------------------------------------------------
+
+    for (const type of [
+      "name",
+      "amount",
+      "email",
+      "phone"
+    ]) {
+      let best = null;
+      let bestScore = 0;
+
+      for (let i = 0; i < candidates.length; i++) {
+        const score = scoreField(
+          candidates[i],
+          type
         );
-      });
 
-    console.log(
-      "Detected elements:",
-      candidates.length
-    );
+        if (score > bestScore) {
+          bestScore = score;
+          best = {
+            index: i,
+            ...candidates[i]
+          };
+        }
+      }
 
-    const usedIndexes =
-      new Set();
+      if (best) {
+        selectedFields[type] = {
+          ...best,
+          score: bestScore
+        };
+      }
+    }
+
+    // --------------------------------------------------------
+    // Remplissage
+    // --------------------------------------------------------
 
     const filled = {};
 
-    for (
-      const [fieldName, value]
-      of Object.entries(fields)
-    ) {
+    for (const type of [
+      "name",
+      "amount",
+      "email",
+      "phone"
+    ]) {
+      const selected = selectedFields[type];
 
-      const possible =
-        candidates
-          .filter(candidate =>
-            candidate.visible &&
-            !candidate.disabled &&
-            !usedIndexes.has(
-              candidate.index
-            )
-          )
-          .map(candidate => ({
-            candidate,
-
-            score:
-              scoreField(
-                candidate,
-                fieldName
-              )
-          }))
-          .sort(
-            (a, b) =>
-              b.score -
-              a.score
-          );
-
-      const best =
-        possible[0];
-
-      if (
-        !best ||
-        best.score < 30
-      ) {
-
-        console.log(
-          "Field not found:",
-          fieldName
-        );
-
-        return res.status(422).json({
-          success: false,
-          reason:
-            "field_not_found",
-          field: fieldName
-        });
+      if (!selected) {
+        filled[type] = false;
+        continue;
       }
 
-      const candidate =
-        best.candidate;
+      const locator = page.locator(
+        "input, textarea, select"
+      ).nth(selected.index);
 
-      console.log(
-        `Field "${fieldName}" ->`,
-        candidate.name ||
-        candidate.id ||
-        candidate.placeholder ||
-        candidate.tag,
-        `score=${best.score}`
-      );
-
-      const locator =
-        page
-          .locator(
-            "input, textarea, select"
-          )
-          .nth(
-            candidate.index
-          );
+      let value = fields[type];
 
       if (
-        candidate.tag ===
-        "select"
+        value === undefined ||
+        value === null
       ) {
-
-        await locator
-          .selectOption({
-            label:
-              String(value)
-          })
-          .catch(
-            async () => {
-              await locator.selectOption(
-                String(value)
-              );
-            }
-          );
-
-      } else {
-
-        await locator.fill(
-          String(value)
-        );
+        filled[type] = false;
+        continue;
       }
 
-      const actualValue =
-        await locator.inputValue();
+      value = String(value);
 
-      if (
-        String(actualValue) !==
-        String(value)
-      ) {
-
-        return res.status(422).json({
-          success: false,
-          reason:
-            "field_verification_failed",
-          field: fieldName
-        });
-      }
-
-      usedIndexes.add(
-        candidate.index
-      );
-
-      filled[fieldName] =
-        true;
-    }
-
-    if (submit !== true) {
-
-      return res.json({
-        success: true,
-        filled,
-        submitted: false,
-        message:
-          "Fields detected and filled successfully"
-      });
-    }
-
-    console.log(
-      "Looking for payment button..."
-    );
-
-    await page.waitForTimeout(
-      1000
-    );
-
-    const buttons =
-      await page.locator(
-        "button, input[type='submit'], input[type='button'], [role='button']"
-      ).evaluateAll(
-        elements => {
-
-          return elements.map(
-            (el, index) => ({
-              index,
-
-              text: (
-                el.innerText ||
-                el.value ||
-                el.textContent ||
-                ""
-              )
-                .replace(
-                  /\s+/g,
-                  " "
-                )
-                .trim(),
-
-              disabled:
-                el.disabled ||
-                el.getAttribute(
-                  "aria-disabled"
-                ) === "true",
-
-              visible:
-                !!(
-                  el.offsetWidth ||
-                  el.offsetHeight ||
-                  el.getClientRects()
-                    .length
-                )
-            })
+      try {
+        const tagName =
+          await locator.evaluate(
+            (el) => el.tagName.toLowerCase()
           );
+
+        if (tagName === "select") {
+          try {
+            await locator.selectOption({
+              label: value
+            });
+          } catch {
+            await locator.selectOption(value);
+          }
+        } else {
+          await locator.fill(value);
         }
-      );
 
-    console.log(
-      "Buttons detected:",
-      buttons
-    );
+        await page.waitForTimeout(300);
 
-    const paymentButton =
-      buttons.find(button =>
-        button.visible &&
-        !button.disabled &&
-        isPaymentButton(
-          button.text
-        )
-      );
+        const currentValue =
+          await locator.inputValue();
 
-    if (!paymentButton) {
-
-      return res.status(422).json({
-        success: false,
-        reason:
-          "submit_button_not_found",
-        filled,
-        buttons
-      });
-    }
-
-    console.log(
-      "Payment button found:",
-      paymentButton.text
-    );
-
-    const buttonLocator =
-      page
-        .locator(
-          "button, input[type='submit'], input[type='button'], [role='button']"
-        )
-        .nth(
-          paymentButton.index
-        );
-
-    const beforeUrl =
-      page.url();
-
-    await buttonLocator
-      .scrollIntoViewIfNeeded();
-
-    await buttonLocator.click();
-
-    console.log(
-      "Payment button clicked."
-    );
-
-    // Attendre le traitement du paiement
-    await page.waitForTimeout(
-      5000
-    );
-
-    try {
-      await page.waitForLoadState(
-        "networkidle",
-        {
-          timeout: 8000
-        }
-      );
-    } catch {}
-
-    await page.waitForTimeout(
-      3000
-    );
-
-    const finalUrl =
-      page.url();
-
-    const pageTitle =
-      await page.title();
-
-    const pageText =
-      await page
-        .locator("body")
-        .innerText()
-        .catch(
-          () => ""
-        );
-
-    const cleanPageText =
-      pageText
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 5000);
-
-    const errorKeywords = [
-      "error",
-      "erreur",
-      "failed",
-      "echec",
-      "échoué",
-      "invalid",
-      "invalide",
-      "declined",
-      "refused",
-      "refusé",
-      "cancelled",
-      "annulé",
-      "expired",
-      "insufficient",
-      "insuffisant"
-    ];
-
-    const detectedErrors = [];
-
-    const normalizedPageText =
-      normalize(
-        cleanPageText
-      );
-
-    for (
-      const keyword
-      of errorKeywords
-    ) {
-
-      if (
-        normalizedPageText.includes(
-          normalize(keyword)
-        )
-      ) {
-        detectedErrors.push(
-          keyword
-        );
+        filled[type] =
+          normalize(currentValue) ===
+          normalize(value);
+      } catch {
+        filled[type] = false;
       }
     }
 
-    console.log(
-      "Final URL:",
-      finalUrl
-    );
+    // --------------------------------------------------------
+    // Recherche du bouton de paiement
+    // --------------------------------------------------------
 
-    console.log(
-      "Detected errors:",
-      detectedErrors
-    );
+    let paymentButton = null;
 
-    return res.json({
-      success:
-        detectedErrors.length === 0,
+    const buttons = await page.locator(
+      "button, input[type='submit'], input[type='button'], [role='button'], a"
+    ).evaluateAll((elements) => {
+      return elements
+        .filter((el) => {
+          const style =
+            window.getComputedStyle(el);
 
-      filled,
+          const rect =
+            el.getBoundingClientRect();
 
-      submitted: true,
-
-      paymentButton:
-        paymentButton.text,
-
-      beforeUrl,
-
-      finalUrl,
-
-      pageTitle,
-
-      detectedErrors,
-
-      consoleErrors,
-
-      pageErrors,
-
-      networkEvents,
-
-      pageText:
-        cleanPageText,
-
-      message:
-        detectedErrors.length === 0
-          ? "Payment action executed and page checked"
-          : "Payment action executed but possible error detected"
+          return (
+            style.display !== "none" &&
+            style.visibility !== "hidden" &&
+            rect.width > 0 &&
+            rect.height > 0
+          );
+        })
+        .map((el) => ({
+          text:
+            el.innerText ||
+            el.textContent ||
+            "",
+          value:
+            el.getAttribute("value") || "",
+          ariaLabel:
+            el.getAttribute("aria-label") || "",
+          title:
+            el.getAttribute("title") || "",
+          name:
+            el.getAttribute("name") || ""
+        }));
     });
 
-  } catch (error) {
+    for (const button of buttons) {
+      if (isPaymentButton(button)) {
+        paymentButton = button;
+        break;
+      }
+    }
 
+    let submitted = false;
+
+    // --------------------------------------------------------
+    // CLICK
+    // --------------------------------------------------------
+
+    if (submit && paymentButton) {
+      const allButtons = page.locator(
+        "button, input[type='submit'], input[type='button'], [role='button'], a"
+      );
+
+      const count = await allButtons.count();
+
+      for (let i = 0; i < count; i++) {
+        const locator = allButtons.nth(i);
+
+        try {
+          const visible =
+            await locator.isVisible();
+
+          if (!visible) {
+            continue;
+          }
+
+          const info =
+            await locator.evaluate((el) => ({
+              text:
+                el.innerText ||
+                el.textContent ||
+                "",
+              value:
+                el.getAttribute("value") || "",
+              ariaLabel:
+                el.getAttribute("aria-label") || "",
+              title:
+                el.getAttribute("title") || "",
+              name:
+                el.getAttribute("name") || ""
+            }));
+
+          if (isPaymentButton(info)) {
+            await locator.scrollIntoViewIfNeeded();
+
+            await page.waitForTimeout(500);
+
+            await locator.click({
+              timeout: 15000
+            });
+
+            submitted = true;
+
+            await page.waitForTimeout(2500);
+
+            break;
+          }
+        } catch {
+          // On essaie le bouton suivant.
+        }
+      }
+    }
+
+    return {
+      success: true,
+      filled,
+      submitted,
+      paymentButton:
+        paymentButton?.text ||
+        paymentButton?.value ||
+        paymentButton?.ariaLabel ||
+        null,
+      finalUrl: page.url(),
+      consoleErrors,
+      pageErrors
+    };
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
+  }
+}
+
+// ============================================================
+// ROUTE PRINCIPALE
+// ============================================================
+
+app.get("/", (req, res) => {
+  res.json({
+    name: "Botfast",
+    status: "running",
+    version: "2.0.0"
+  });
+});
+
+// ============================================================
+// HEALTH CHECK
+// ============================================================
+
+app.get("/health", (req, res) => {
+  res.json({
+    status: "healthy"
+  });
+});
+
+// ============================================================
+// AUTOMATE GÉNÉRIQUE
+// ============================================================
+
+app.post("/api/automate", async (req, res) => {
+  try {
+    const {
+      url,
+      fields = {},
+      submit = true
+    } = req.body || {};
+
+    if (!url) {
+      return res.status(400).json({
+        success: false,
+        message: "URL obligatoire."
+      });
+    }
+
+    const result = await automatePayment({
+      url,
+      fields,
+      submit
+    });
+
+    res.json(result);
+  } catch (error) {
     console.error(
-      "Automation error:",
+      "Erreur /api/automate:",
+      error
+    );
+
+    res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Erreur pendant l'automatisation."
+    });
+  }
+});
+
+// ============================================================
+// INITIATION FAPSHI + AUTOMATISATION
+//
+// IMPORTANT:
+// Cette route NE vérifie PAS le statut du paiement.
+// Elle fait uniquement:
+//
+// 1. Validation
+// 2. initiate-pay Fapshi
+// 3. Récupération du link
+// 4. Ouverture du link avec Playwright
+// 5. Remplissage
+// 6. Clic sur le bouton de paiement
+//
+// FIN.
+// ============================================================
+
+app.post("/api/pay", async (req, res) => {
+  try {
+    const {
+      amount,
+      phone
+    } = req.body || {};
+
+    // --------------------------------------------------------
+    // Validation montant
+    // --------------------------------------------------------
+
+    const numericAmount = Number(amount);
+
+    if (
+      !Number.isFinite(numericAmount) ||
+      numericAmount < MIN_AMOUNT
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          `Le montant minimum est de ${MIN_AMOUNT} FCFA.`
+      });
+    }
+
+    // --------------------------------------------------------
+    // Validation téléphone
+    // --------------------------------------------------------
+
+    if (!isValidPhone(phone)) {
+      return res.status(400).json({
+        success: false,
+        message: "Numéro de téléphone invalide."
+      });
+    }
+
+    const cleanPhoneNumber =
+      cleanPhone(phone);
+
+    const externalId =
+      generateExternalId();
+
+    console.log(
+      "----------------------------------------"
+    );
+
+    console.log(
+      "Nouveau paiement Botfast"
+    );
+
+    console.log(
+      "Montant:",
+      numericAmount
+    );
+
+    console.log(
+      "Téléphone:",
+      cleanPhoneNumber
+    );
+
+    console.log(
+      "External ID:",
+      externalId
+    );
+
+    // --------------------------------------------------------
+    // 1. INITIATION FAPSHI
+    // --------------------------------------------------------
+
+    console.log(
+      "Initiation Fapshi..."
+    );
+
+    const fapshi =
+      await fapshiRequest(
+        "POST",
+        "/initiate-pay",
+        {
+          amount: numericAmount,
+          email: PAYMENT_EMAIL,
+          redirectUrl: "",
+          userId: cleanPhoneNumber,
+          externalId,
+          message:
+            "Paiement " +
+            PAYMENT_NAME
+        }
+      );
+
+    console.log(
+      "Réponse Fapshi reçue."
+    );
+
+    const paymentLink =
+      fapshi?.link;
+
+    const transId =
+      fapshi?.transId;
+
+    if (!paymentLink) {
+      console.error(
+        "Fapshi n'a pas retourné de link:",
+        fapshi
+      );
+
+      return res.status(502).json({
+        success: false,
+        message:
+          "Fapshi n'a pas retourné de lien de paiement.",
+        data: fapshi
+      });
+    }
+
+    // --------------------------------------------------------
+    // 2. AUTOMATISATION DU LIEN FAPSHI
+    // --------------------------------------------------------
+
+    console.log(
+      "Ouverture de la page Fapshi..."
+    );
+
+    const automation =
+      await automatePayment({
+        url: paymentLink,
+
+        fields: {
+          name: PAYMENT_NAME,
+          amount: String(numericAmount),
+          email: PAYMENT_EMAIL,
+          phone: cleanPhoneNumber
+        },
+
+        submit: true
+      });
+
+    console.log(
+      "Automatisation terminée."
+    );
+
+    console.log(
+      "Bouton:",
+      automation.paymentButton
+    );
+
+    console.log(
+      "Submitted:",
+      automation.submitted
+    );
+
+    console.log(
+      "----------------------------------------"
+    );
+
+    // --------------------------------------------------------
+    // RÉPONSE
+    //
+    // Aucun payment-status ici.
+    // --------------------------------------------------------
+
+    return res.json({
+      success: true,
+
+      message:
+        "Paiement Fapshi initié et action de paiement exécutée.",
+
+      transId: transId || null,
+
+      externalId,
+
+      paymentLink,
+
+      amount: numericAmount,
+
+      phone: cleanPhoneNumber,
+
+      automation: {
+        success:
+          automation.success,
+
+        filled:
+          automation.filled,
+
+        submitted:
+          automation.submitted,
+
+        paymentButton:
+          automation.paymentButton,
+
+        finalUrl:
+          automation.finalUrl
+      }
+    });
+  } catch (error) {
+    console.error(
+      "Erreur /api/pay:",
       error
     );
 
     return res.status(500).json({
       success: false,
-      reason:
-        "automation_error",
       message:
-        error.message
+        error.message ||
+        "Impossible d'initier le paiement.",
+      details:
+        error.data || null
     });
-
-  } finally {
-
-    if (browser) {
-
-      try {
-        await browser.close();
-      } catch {}
-    }
   }
 });
 
-app.get("/tester", (req, res) => {
+// ============================================================
+// TESTEUR
+// ============================================================
 
+app.get("/tester", (req, res) => {
   res.send(`
 <!DOCTYPE html>
-
 <html lang="fr">
-
 <head>
-
 <meta charset="UTF-8">
-
-<meta
-  name="viewport"
-  content="width=device-width, initial-scale=1"
->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <title>Botfast Tester</title>
 
 <style>
+* {
+  box-sizing: border-box;
+}
 
 body {
+  margin: 0;
   font-family: Arial, sans-serif;
+  background: #f4f6f8;
+  color: #222;
+}
+
+.container {
   max-width: 600px;
   margin: 40px auto;
   padding: 20px;
-  background: #f5f5f5;
 }
 
-.box {
+.card {
   background: white;
   padding: 25px;
-  border-radius: 12px;
-  box-shadow: 0 2px 10px rgba(0,0,0,.08);
+  border-radius: 14px;
+  box-shadow: 0 5px 25px rgba(0,0,0,.08);
 }
 
 h1 {
@@ -928,24 +947,24 @@ h1 {
 label {
   display: block;
   margin-top: 15px;
+  margin-bottom: 6px;
   font-weight: bold;
 }
 
 input {
   width: 100%;
-  box-sizing: border-box;
-  padding: 12px;
-  margin-top: 6px;
+  padding: 13px;
   border: 1px solid #ccc;
-  border-radius: 7px;
+  border-radius: 8px;
+  font-size: 16px;
 }
 
 button {
   width: 100%;
-  margin-top: 22px;
-  padding: 13px;
+  padding: 14px;
+  margin-top: 20px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 8px;
   background: #111;
   color: white;
   font-size: 16px;
@@ -953,231 +972,115 @@ button {
 }
 
 button:disabled {
-  opacity: .6;
-}
-
-.checkbox {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 20px;
-}
-
-.checkbox input {
-  width: auto;
-  margin: 0;
-}
-
-.warning {
-  margin-top: 15px;
-  padding: 12px;
-  background: #fff3cd;
-  border-radius: 8px;
+  opacity: .5;
 }
 
 pre {
   margin-top: 20px;
   padding: 15px;
   background: #111;
-  color: #0f0;
+  color: #eee;
   border-radius: 8px;
   white-space: pre-wrap;
-  overflow-x: auto;
+  word-break: break-word;
 }
 
+.info {
+  margin-top: 15px;
+  padding: 12px;
+  background: #fff3cd;
+  border-radius: 8px;
+  font-size: 14px;
+}
 </style>
-
 </head>
 
 <body>
 
-<div class="box">
+<div class="container">
 
-<h1>🤖 Botfast Tester</h1>
+<div class="card">
 
-<label>
-Nom complet
-</label>
+<h1>🚀 Botfast Tester</h1>
 
-<input
-  id="name"
-  type="text"
-  placeholder="Jean Dupont"
->
+<p>
+Test rapide de l'initiation Fapshi.
+</p>
 
-<label>
-URL du formulaire
-</label>
+<div class="info">
+⚠️ Ce test initie réellement un paiement.
+Botfast ne vérifie pas le statut du paiement.
+</div>
 
-<input
-  id="url"
-  type="url"
-  placeholder="https://exemple.com/formulaire"
->
-
-<label>
-Montant
-</label>
+<label>Montant FCFA</label>
 
 <input
   id="amount"
-  type="text"
-  placeholder="4000"
->
+  type="number"
+  value="4000"
+  min="4000"
+/>
 
-<label>
-Email
-</label>
-
-<input
-  id="email"
-  type="email"
-  placeholder="client@example.com"
->
-
-<label>
-Téléphone
-</label>
+<label>Numéro de téléphone</label>
 
 <input
   id="phone"
   type="text"
-  placeholder="690000000"
->
-
-<div class="checkbox">
-
-<input
-  id="submit"
-  type="checkbox"
->
-
-<label
-  for="submit"
-  style="margin:0;"
->
-Lancer le paiement
-</label>
-
-</div>
-
-<div class="warning">
-
-⚠️ Si cette option est cochée,
-le bouton de paiement sera réellement
-cliqué.
-
-</div>
+  value="670000000"
+  placeholder="Ex: 670000000"
+/>
 
 <button
-  id="testBtn"
-  onclick="runTest()"
+  id="payButton"
+  onclick="initPayment()"
 >
-Tester le formulaire
+🚀 Initier le paiement
 </button>
 
-<pre id="result">
-Résultat du test...
-</pre>
+<pre id="result">Prêt.</pre>
+
+</div>
 
 </div>
 
 <script>
 
-async function runTest() {
-
-  const button =
-    document.getElementById(
-      "testBtn"
-    );
-
-  const result =
-    document.getElementById(
-      "result"
-    );
-
-  const name =
-    document.getElementById(
-      "name"
-    ).value.trim();
-
-  const url =
-    document.getElementById(
-      "url"
-    ).value.trim();
+async function initPayment() {
 
   const amount =
-    document.getElementById(
-      "amount"
-    ).value.trim();
-
-  const email =
-    document.getElementById(
-      "email"
-    ).value.trim();
+    document.getElementById("amount").value;
 
   const phone =
-    document.getElementById(
-      "phone"
-    ).value.trim();
+    document.getElementById("phone").value;
 
-  const submit =
-    document.getElementById(
-      "submit"
-    ).checked;
+  const button =
+    document.getElementById("payButton");
 
-  if (!url) {
-
-    result.textContent =
-      "❌ Veuillez entrer une URL.";
-
-    return;
-  }
+  const result =
+    document.getElementById("result");
 
   button.disabled = true;
 
-  button.textContent =
-    "⏳ Test en cours...";
-
   result.textContent =
-    "Ouverture du formulaire...";
+    "⏳ Initiation du paiement...";
 
   try {
 
     const response =
-      await fetch(
-        "/api/automate",
-        {
+      await fetch("/api/pay", {
 
-          method: "POST",
+        method: "POST",
 
-          headers: {
-            "Content-Type":
-              "application/json"
-          },
+        headers: {
+          "Content-Type":
+            "application/json"
+        },
 
-          body: JSON.stringify({
-
-            url,
-
-            fields: {
-
-              name,
-
-              amount,
-
-              email,
-
-              phone
-
-            },
-
-            submit
-
-          })
-
-        }
-      );
+        body: JSON.stringify({
+          amount: amount,
+          phone: phone
+        })
+      });
 
     const data =
       await response.json();
@@ -1198,28 +1101,33 @@ async function runTest() {
   } finally {
 
     button.disabled = false;
-
-    button.textContent =
-      "Tester le formulaire";
   }
 }
 
 </script>
 
 </body>
-
 </html>
   `);
 });
 
-app.listen(
-  PORT,
-  "0.0.0.0",
-  () => {
+// ============================================================
+// ERREUR 404
+// ============================================================
 
-    console.log(
-      `Server running on port ${PORT}`
-    );
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Route introuvable."
+  });
+});
 
-  }
-);
+// ============================================================
+// DÉMARRAGE
+// ============================================================
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(
+    `Botfast running on port ${PORT}`
+  );
+});
