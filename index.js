@@ -5,7 +5,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ============================================================
-// CONFIGURATION
+// CONFIGURATIONs
 // ============================================================
 
 const FAPSHI_API_URL =
