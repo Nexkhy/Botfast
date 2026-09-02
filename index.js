@@ -5,11 +5,12 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ============================================================
-// CONFIGURATIONs
+// CONFIGURATION
 // ============================================================
 
+// API FAPSHI LIVE
 const FAPSHI_API_URL =
-  process.env.FAPSHI_API_URL || "https://fapshi.com";
+  process.env.FAPSHI_API_URL || "https://live.fapshi.com";
 
 const PAYMENT_NAME = "Junior Kameni";
 const PAYMENT_EMAIL = "antigravity2371@gmail.com";
@@ -235,16 +236,13 @@ async function fapshiRequest(
 
     headers: {
       "Content-Type": "application/json",
-
       apikey: apiKey,
-
       apiuser: apiUser
     }
   };
 
   if (body !== undefined) {
-    options.body =
-      JSON.stringify(body);
+    options.body = JSON.stringify(body);
   }
 
   console.log("");
@@ -253,15 +251,8 @@ async function fapshiRequest(
   console.log("==============================");
   console.log("URL:", url);
   console.log("METHOD:", method);
-
-  // On ne log PAS la clé API.
-  console.log(
-    "API KEY: reçue"
-  );
-
-  console.log(
-    "API USER: reçu"
-  );
+  console.log("API KEY: reçue");
+  console.log("API USER: reçu");
 
   if (body) {
     console.log(
@@ -281,10 +272,22 @@ async function fapshiRequest(
     response.status
   );
 
-  console.log(
-    "RESPONSE:",
-    text
-  );
+  // Évite d'afficher une énorme page HTML
+  if (
+    text.length > 5000
+  ) {
+    console.log(
+      "RESPONSE: [réponse trop longue, tronquée]"
+    );
+    console.log(
+      text.substring(0, 5000)
+    );
+  } else {
+    console.log(
+      "RESPONSE:",
+      text
+    );
+  }
 
   console.log("==============================");
   console.log("");
@@ -295,7 +298,7 @@ async function fapshiRequest(
     data = JSON.parse(text);
   } catch {
     data = {
-      raw: text
+      raw: text.substring(0, 2000)
     };
   }
 
@@ -394,9 +397,7 @@ async function automatePayment({
       // Certaines pages React ne terminent jamais networkidle.
     }
 
-    await page.waitForTimeout(
-      2000
-    );
+    await page.waitForTimeout(2000);
 
     // ========================================================
     // DÉTECTION DES CHAMPS
@@ -412,24 +413,16 @@ async function automatePayment({
             .filter((el) => {
 
               const style =
-                window.getComputedStyle(
-                  el
-                );
+                window.getComputedStyle(el);
 
               const rect =
                 el.getBoundingClientRect();
 
               return (
-                style.display !==
-                  "none" &&
-
-                style.visibility !==
-                  "hidden" &&
-
+                style.display !== "none" &&
+                style.visibility !== "hidden" &&
                 rect.width > 0 &&
-
                 rect.height > 0 &&
-
                 !el.disabled
               );
             })
@@ -467,47 +460,32 @@ async function automatePayment({
               return {
 
                 name:
-                  el.getAttribute(
-                    "name"
-                  ) || "",
+                  el.getAttribute("name") || "",
 
                 id:
                   el.id || "",
 
                 placeholder:
-                  el.getAttribute(
-                    "placeholder"
-                  ) || "",
+                  el.getAttribute("placeholder") || "",
 
                 ariaLabel:
-                  el.getAttribute(
-                    "aria-label"
-                  ) || "",
+                  el.getAttribute("aria-label") || "",
 
                 autocomplete:
-                  el.getAttribute(
-                    "autocomplete"
-                  ) || "",
+                  el.getAttribute("autocomplete") || "",
 
                 inputmode:
-                  el.getAttribute(
-                    "inputmode"
-                  ) || "",
+                  el.getAttribute("inputmode") || "",
 
                 type:
-                  el.getAttribute(
-                    "type"
-                  ) || "",
+                  el.getAttribute("type") || "",
 
                 label,
 
                 parentText:
                   el.parentElement
                     ?.innerText
-                    ?.substring(
-                      0,
-                      300
-                    ) || "",
+                    ?.substring(0, 300) || "",
 
                 value:
                   el.value || ""
@@ -616,8 +594,7 @@ async function automatePayment({
         const tag =
           await locator.evaluate(
             (el) =>
-              el.tagName
-                .toLowerCase()
+              el.tagName.toLowerCase()
           );
 
         if (tag === "select") {
@@ -643,9 +620,7 @@ async function automatePayment({
           );
         }
 
-        await page.waitForTimeout(
-          300
-        );
+        await page.waitForTimeout(300);
 
         const current =
           await locator.inputValue();
@@ -674,22 +649,15 @@ async function automatePayment({
             .filter((el) => {
 
               const style =
-                window.getComputedStyle(
-                  el
-                );
+                window.getComputedStyle(el);
 
               const rect =
                 el.getBoundingClientRect();
 
               return (
-                style.display !==
-                  "none" &&
-
-                style.visibility !==
-                  "hidden" &&
-
+                style.display !== "none" &&
+                style.visibility !== "hidden" &&
                 rect.width > 0 &&
-
                 rect.height > 0
               );
             })
@@ -702,24 +670,16 @@ async function automatePayment({
                 "",
 
               value:
-                el.getAttribute(
-                  "value"
-                ) || "",
+                el.getAttribute("value") || "",
 
               ariaLabel:
-                el.getAttribute(
-                  "aria-label"
-                ) || "",
+                el.getAttribute("aria-label") || "",
 
               title:
-                el.getAttribute(
-                  "title"
-                ) || "",
+                el.getAttribute("title") || "",
 
               name:
-                el.getAttribute(
-                  "name"
-                ) || ""
+                el.getAttribute("name") || ""
             }));
         }
       );
@@ -787,24 +747,16 @@ async function automatePayment({
                   "",
 
                 value:
-                  el.getAttribute(
-                    "value"
-                  ) || "",
+                  el.getAttribute("value") || "",
 
                 ariaLabel:
-                  el.getAttribute(
-                    "aria-label"
-                  ) || "",
+                  el.getAttribute("aria-label") || "",
 
                 title:
-                  el.getAttribute(
-                    "title"
-                  ) || "",
+                  el.getAttribute("title") || "",
 
                 name:
-                  el.getAttribute(
-                    "name"
-                  ) || ""
+                  el.getAttribute("name") || ""
               })
             );
 
@@ -817,9 +769,7 @@ async function automatePayment({
           await locator
             .scrollIntoViewIfNeeded();
 
-          await page.waitForTimeout(
-            500
-          );
+          await page.waitForTimeout(500);
 
           await locator.click({
             timeout: 15000
@@ -827,9 +777,7 @@ async function automatePayment({
 
           submitted = true;
 
-          await page.waitForTimeout(
-            2500
-          );
+          await page.waitForTimeout(2500);
 
           break;
 
@@ -945,7 +893,7 @@ app.post(
 );
 
 // ============================================================
-// PAIEMENT FAPSHI
+// PAIEMENT FAPSHI LIVE
 //
 // LE BACKEND ENVOIE:
 //
@@ -980,9 +928,7 @@ app.post(
         Number(amount);
 
       if (
-        !Number.isFinite(
-          numericAmount
-        ) ||
+        !Number.isFinite(numericAmount) ||
         numericAmount < MIN_AMOUNT
       ) {
 
@@ -1034,7 +980,7 @@ app.post(
       );
 
       console.log(
-        "NOUVEAU PAIEMENT"
+        "NOUVEAU PAIEMENT FAPSHI LIVE"
       );
 
       console.log(
@@ -1225,7 +1171,12 @@ app.post(
         "=============================="
       );
 
-      return res.status(500).json({
+      return res.status(
+        error.status >= 400 &&
+        error.status < 600
+          ? error.status
+          : 500
+      ).json({
 
         success: false,
 
@@ -1344,7 +1295,7 @@ button:disabled {
 <h1>🚀 Botfast</h1>
 
 <p>
-Test rapide de l'initiation Fapshi.
+Test rapide de l'initiation Fapshi LIVE.
 </p>
 
 <label>Clé API Fapshi</label>
@@ -1443,7 +1394,7 @@ async function pay() {
   status.className = "";
 
   status.textContent =
-    "⏳ Initiation du paiement...";
+    "⏳ Initiation du paiement live...";
 
   try {
 
@@ -1492,14 +1443,19 @@ async function pay() {
         );
 
       if (
-        data.fapshiResponse
+        data.fapshiResponse &&
+        typeof data.fapshiResponse === "object"
       ) {
 
-        status.textContent +=
-          "\\n\\nRéponse Fapshi : " +
-          JSON.stringify(
-            data.fapshiResponse
-          );
+        const f =
+          data.fapshiResponse;
+
+        if (f.message) {
+
+          status.textContent +=
+            "\\n\\nMessage Fapshi : " +
+            f.message;
+        }
       }
 
       return;
