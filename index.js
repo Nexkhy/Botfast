@@ -8,9 +8,6 @@ app.use(express.json({ limit: "1mb" }));
 const PORT = process.env.PORT || 3000;
 const BOT_API_KEY = process.env.BOT_API_KEY;
 
-/**
- * Normalise un texte
- */
 function normalize(text = "") {
   return String(text)
     .toLowerCase()
@@ -20,9 +17,6 @@ function normalize(text = "") {
     .trim();
 }
 
-/**
- * Alias des champs courants
- */
 const aliases = {
   amount: [
     "amount",
@@ -58,42 +52,15 @@ const aliases = {
   ]
 };
 
-/**
- * Mots permettant d'identifier un bouton de paiement
- */
-const paymentButtonWords = [
-  "payer",
-  "pay",
-  "payment",
-  "pay now",
-  "pay now",
-  "confirmer le paiement",
-  "confirm payment",
-  "valider le paiement",
-  "effectuer le paiement",
-  "proceed to payment",
-  "make payment"
-];
-
-/**
- * Vérifie l'URL
- */
 function isValidUrl(value) {
   try {
     const url = new URL(value);
-
-    return (
-      url.protocol === "http:" ||
-      url.protocol === "https:"
-    );
+    return url.protocol === "http:" || url.protocol === "https:";
   } catch {
     return false;
   }
 }
 
-/**
- * Score d'un champ
- */
 function scoreField(candidate, requestedName) {
   const key = normalize(requestedName);
 
@@ -143,28 +110,17 @@ function scoreField(candidate, requestedName) {
 
   if (key === "email") {
     if (type === "email") score += 100;
-
-    if (candidate.autocomplete === "email") {
-      score += 60;
-    }
+    if (candidate.autocomplete === "email") score += 60;
   }
 
   if (key === "phone") {
     if (type === "tel") score += 100;
-
-    if (inputmode === "tel") {
-      score += 80;
-    }
-
-    if (candidate.autocomplete === "tel") {
-      score += 60;
-    }
+    if (inputmode === "tel") score += 80;
+    if (candidate.autocomplete === "tel") score += 60;
   }
 
   if (key === "amount") {
-    if (type === "number") {
-      score += 60;
-    }
+    if (type === "number") score += 60;
 
     if (
       inputmode === "numeric" ||
@@ -177,9 +133,27 @@ function scoreField(candidate, requestedName) {
   return score;
 }
 
-/**
- * Page d'accueil
- */
+function isPaymentButton(text = "") {
+  const value = normalize(text);
+
+  const paymentWords = [
+    "payer",
+    "pay",
+    "payment",
+    "pay now",
+    "confirmer le paiement",
+    "confirm payment",
+    "valider le paiement",
+    "effectuer le paiement",
+    "proceed to payment",
+    "make payment"
+  ];
+
+  return paymentWords.some(word =>
+    value.includes(normalize(word))
+  );
+}
+
 app.get("/", (req, res) => {
   res.json({
     status: "ok",
@@ -187,27 +161,16 @@ app.get("/", (req, res) => {
   });
 });
 
-/**
- * Health check
- */
 app.get("/health", (req, res) => {
   res.json({
     status: "healthy"
   });
 });
 
-/**
- * API principale
- */
 app.post("/api/automate", async (req, res) => {
   let browser = null;
 
   try {
-    /**
-     * Protection facultative.
-     * Dès que BOT_API_KEY est configurée sur Render,
-     * l'API devient protégée.
-     */
     if (
       BOT_API_KEY &&
       req.headers["x-api-key"] !== BOT_API_KEY
@@ -224,9 +187,6 @@ app.post("/api/automate", async (req, res) => {
       submit = false
     } = req.body;
 
-    /**
-     * Vérification URL
-     */
     if (!url || typeof url !== "string") {
       return res.status(400).json({
         success: false,
@@ -241,9 +201,6 @@ app.post("/api/automate", async (req, res) => {
       });
     }
 
-    /**
-     * Vérification des champs
-     */
     if (
       !fields ||
       typeof fields !== "object" ||
@@ -256,19 +213,12 @@ app.post("/api/automate", async (req, res) => {
       });
     }
 
+    console.log("=================================");
     console.log("Opening:", url);
-    console.log(
-      "Requested fields:",
-      Object.keys(fields)
-    );
-    console.log(
-      "Submit requested:",
-      submit === true
-    );
+    console.log("Requested fields:", Object.keys(fields));
+    console.log("Submit:", submit);
+    console.log("=================================");
 
-    /**
-     * Lancement navigateur
-     */
     browser = await chromium.launch({
       headless: true
     });
@@ -282,160 +232,149 @@ app.post("/api/automate", async (req, res) => {
 
     page.setDefaultTimeout(15000);
 
-    /**
-     * Chargement page
-     */
+    // Collecte des erreurs JavaScript
+    const consoleErrors = [];
+
+    page.on("console", msg => {
+      if (msg.type() === "error") {
+        consoleErrors.push(msg.text());
+        console.log("BROWSER ERROR:", msg.text());
+      }
+    });
+
+    // Collecte des erreurs de page
+    const pageErrors = [];
+
+    page.on("pageerror", error => {
+      pageErrors.push(error.message);
+      console.log("PAGE ERROR:", error.message);
+    });
+
+    // Collecte des requêtes/réponses réseau
+    const networkEvents = [];
+
+    page.on("response", async response => {
+      try {
+        const responseUrl = response.url();
+
+        // On garde surtout les réponses intéressantes
+        if (
+          /pay|payment|fapshi|transaction|checkout/i.test(
+            responseUrl
+          )
+        ) {
+          const event = {
+            type: "response",
+            status: response.status(),
+            url: responseUrl
+          };
+
+          networkEvents.push(event);
+
+          console.log(
+            "NETWORK:",
+            response.status(),
+            responseUrl
+          );
+        }
+      } catch {}
+    });
+
     await page.goto(url, {
       waitUntil: "domcontentloaded",
       timeout: 30000
     });
 
-    /**
-     * Attente React / JavaScript
-     */
     try {
-      await page.waitForLoadState(
-        "networkidle",
-        {
-          timeout: 10000
-        }
-      );
+      await page.waitForLoadState("networkidle", {
+        timeout: 10000
+      });
     } catch {}
 
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(2000);
 
     console.log(
       "Page loaded:",
       await page.title()
     );
 
-    /**
-     * Analyse des champs
-     */
-    const candidates = await page
-      .locator(
-        "input, textarea, select"
-      )
-      .evaluateAll((elements) => {
+    const candidates = await page.locator(
+      "input, textarea, select"
+    ).evaluateAll(elements => {
 
-        return elements.map(
-          (el, index) => {
+      const getText = element => {
+        if (!element) return "";
 
-            const getText = (element) => {
-              if (!element) return "";
+        return (
+          element.innerText ||
+          element.textContent ||
+          ""
+        )
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 300);
+      };
 
-              return (
-                element.innerText ||
-                element.textContent ||
-                ""
-              )
-                .replace(/\s+/g, " ")
-                .trim()
-                .slice(0, 300);
-            };
+      return elements.map((el, index) => {
 
-            let label = "";
+        let label = "";
 
-            /**
-             * Label associé par ID
-             */
-            if (el.id) {
+        if (el.id) {
+          const associated =
+            document.querySelector(
+              `label[for="${CSS.escape(el.id)}"]`
+            );
 
-              const associated =
-                document.querySelector(
-                  `label[for="${CSS.escape(el.id)}"]`
-                );
-
-              if (associated) {
-                label = getText(
-                  associated
-                );
-              }
-            }
-
-            /**
-             * Label parent
-             */
-            const parentLabel =
-              el.closest("label");
-
-            if (
-              !label &&
-              parentLabel
-            ) {
-              label =
-                getText(parentLabel);
-            }
-
-            const parent =
-              el.parentElement ||
-              el.closest("div");
-
-            const nearbyText =
-              parent
-                ? getText(parent)
-                : "";
-
-            return {
-              index,
-
-              tag:
-                el.tagName.toLowerCase(),
-
-              type:
-                el.getAttribute(
-                  "type"
-                ) || "",
-
-              name:
-                el.getAttribute(
-                  "name"
-                ) || "",
-
-              id:
-                el.id || "",
-
-              placeholder:
-                el.getAttribute(
-                  "placeholder"
-                ) || "",
-
-              ariaLabel:
-                el.getAttribute(
-                  "aria-label"
-                ) || "",
-
-              autocomplete:
-                el.getAttribute(
-                  "autocomplete"
-                ) || "",
-
-              inputmode:
-                el.getAttribute(
-                  "inputmode"
-                ) || "",
-
-              label,
-
-              parentText:
-                nearbyText,
-
-              nearbyText,
-
-              visible:
-                !!(
-                  el.offsetWidth ||
-                  el.offsetHeight ||
-                  el.getClientRects()
-                    .length
-                ),
-
-              disabled:
-                el.disabled
-            };
+          if (associated) {
+            label = getText(associated);
           }
-        );
+        }
+
+        const parentLabel =
+          el.closest("label");
+
+        if (!label && parentLabel) {
+          label = getText(parentLabel);
+        }
+
+        const parent =
+          el.parentElement ||
+          el.closest("div");
+
+        const nearbyText = parent
+          ? getText(parent)
+          : "";
+
+        return {
+          index,
+          tag: el.tagName.toLowerCase(),
+          type:
+            el.getAttribute("type") || "",
+          name:
+            el.getAttribute("name") || "",
+          id:
+            el.id || "",
+          placeholder:
+            el.getAttribute("placeholder") || "",
+          ariaLabel:
+            el.getAttribute("aria-label") || "",
+          autocomplete:
+            el.getAttribute("autocomplete") || "",
+          inputmode:
+            el.getAttribute("inputmode") || "",
+          label,
+          parentText: nearbyText,
+          nearbyText,
+          visible:
+            !!(
+              el.offsetWidth ||
+              el.offsetHeight ||
+              el.getClientRects().length
+            ),
+          disabled: el.disabled
+        };
       });
+    });
 
     console.log(
       "Detected elements:",
@@ -445,62 +384,41 @@ app.post("/api/automate", async (req, res) => {
     const usedIndexes = new Set();
     const filled = {};
 
-    /**
-     * Détection + remplissage
-     */
-    for (
-      const [fieldName, value]
-      of Object.entries(fields)
-    ) {
+    for (const [fieldName, value] of Object.entries(fields)) {
 
       const possible = candidates
-
-        .filter(
-          (candidate) =>
-            candidate.visible &&
-            !candidate.disabled &&
-            !usedIndexes.has(
-              candidate.index
-            )
+        .filter(candidate =>
+          candidate.visible &&
+          !candidate.disabled &&
+          !usedIndexes.has(candidate.index)
         )
-
-        .map((candidate) => ({
+        .map(candidate => ({
           candidate,
-
-          score:
-            scoreField(
-              candidate,
-              fieldName
-            )
+          score: scoreField(
+            candidate,
+            fieldName
+          )
         }))
-
         .sort(
           (a, b) =>
             b.score - a.score
         );
 
-      const best =
-        possible[0];
+      const best = possible[0];
 
       if (
         !best ||
         best.score < 30
       ) {
-
         console.log(
-          `Field not found: ${fieldName}`
+          "Field not found:",
+          fieldName
         );
 
         return res.status(422).json({
           success: false,
-
-          reason:
-            "field_not_found",
-
-          field:
-            fieldName,
-
-          filled
+          reason: "field_not_found",
+          field: fieldName
         });
       }
 
@@ -510,9 +428,9 @@ app.post("/api/automate", async (req, res) => {
       console.log(
         `Field "${fieldName}" ->`,
         candidate.name ||
-          candidate.id ||
-          candidate.placeholder ||
-          candidate.tag,
+        candidate.id ||
+        candidate.placeholder ||
+        candidate.tag,
         `score=${best.score}`
       );
 
@@ -523,36 +441,21 @@ app.post("/api/automate", async (req, res) => {
           )
           .nth(candidate.index);
 
-      /**
-       * Select
-       */
-      if (
-        candidate.tag ===
-        "select"
-      ) {
+      if (candidate.tag === "select") {
 
         await locator
           .selectOption({
-            label:
-              String(value)
+            label: String(value)
           })
-          .catch(
-            async () => {
+          .catch(async () => {
 
-              await locator
-                .selectOption(
-                  String(value)
-                );
+            await locator.selectOption(
+              String(value)
+            );
 
-            }
-          );
+          });
 
-      }
-
-      /**
-       * Input / textarea
-       */
-      else {
+      } else {
 
         await locator.fill(
           String(value)
@@ -560,9 +463,6 @@ app.post("/api/automate", async (req, res) => {
 
       }
 
-      /**
-       * Vérification
-       */
       const actualValue =
         await locator.inputValue();
 
@@ -573,204 +473,233 @@ app.post("/api/automate", async (req, res) => {
 
         return res.status(422).json({
           success: false,
-
           reason:
             "field_verification_failed",
-
-          field:
-            fieldName,
-
-          filled
+          field: fieldName
         });
+
       }
 
       usedIndexes.add(
         candidate.index
       );
 
-      filled[fieldName] =
-        true;
+      filled[fieldName] = true;
     }
 
-    /**
-     * Si submit = false,
-     * on s'arrête après remplissage.
-     */
+    // Si on ne demande pas le paiement
     if (submit !== true) {
 
       return res.json({
-
         success: true,
-
         filled,
-
         submitted: false,
-
         message:
           "Fields detected and filled successfully"
-
       });
     }
 
-    /**
-     * Recherche du bouton de paiement
-     */
     console.log(
-      "Searching payment button..."
+      "Looking for payment button..."
     );
 
-    const buttons =
-      await page
-        .locator(
-          'button, input[type="submit"], input[type="button"], [role="button"]'
-        )
-        .evaluateAll(
-          (elements) => {
+    // Petit délai pour laisser React mettre à jour le bouton
+    await page.waitForTimeout(1000);
 
-            return elements.map(
-              (el, index) => {
+    const buttons = await page.locator(
+      "button, input[type='submit'], input[type='button'], [role='button']"
+    ).evaluateAll(elements => {
 
-                const text =
-                  (
-                    el.innerText ||
-                    el.value ||
-                    el.getAttribute(
-                      "aria-label"
-                    ) ||
-                    el.getAttribute(
-                      "title"
-                    ) ||
-                    ""
-                  )
-                    .replace(
-                      /\s+/g,
-                      " "
-                    )
-                    .trim();
-
-                return {
-
-                  index,
-
-                  text,
-
-                  normalized:
-                    text
-                      .toLowerCase()
-                      .normalize("NFD")
-                      .replace(
-                        /[\u0300-\u036f]/g,
-                        ""
-                      ),
-
-                  visible:
-                    !!(
-                      el.offsetWidth ||
-                      el.offsetHeight ||
-                      el
-                        .getClientRects()
-                        .length
-                    ),
-
-                  disabled:
-                    el.disabled
-                };
-              }
-            );
-          }
-        );
-
-    /**
-     * Trouve un bouton explicitement lié
-     * au paiement
-     */
-    const submitButton =
-      buttons.find(
-        (button) => {
-
-          if (
-            !button.visible ||
-            button.disabled
-          ) {
-            return false;
-          }
-
-          return paymentButtonWords.some(
-            (word) =>
-              button.normalized.includes(
-                normalize(word)
-              )
-          );
-        }
+      return elements.map(
+        (el, index) => ({
+          index,
+          text: (
+            el.innerText ||
+            el.value ||
+            el.textContent ||
+            ""
+          )
+            .replace(/\s+/g, " ")
+            .trim(),
+          disabled:
+            el.disabled ||
+            el.getAttribute("aria-disabled") ===
+              "true",
+          visible:
+            !!(
+              el.offsetWidth ||
+              el.offsetHeight ||
+              el.getClientRects().length
+            )
+        })
       );
 
-    if (!submitButton) {
+    });
 
-      console.log(
-        "Payment button not found"
+    console.log(
+      "Buttons detected:",
+      buttons
+    );
+
+    const paymentButton =
+      buttons.find(button =>
+        button.visible &&
+        !button.disabled &&
+        isPaymentButton(button.text)
       );
+
+    if (!paymentButton) {
 
       return res.status(422).json({
-
         success: false,
-
         reason:
           "submit_button_not_found",
-
         filled,
-
-        submitted: false
-
+        buttons
       });
+
     }
 
     console.log(
       "Payment button found:",
-      submitButton.text
+      paymentButton.text
     );
 
-    /**
-     * Clic uniquement sur le bouton
-     * identifié comme bouton de paiement
-     */
-    await page
-      .locator(
-        'button, input[type="submit"], input[type="button"], [role="button"]'
-      )
-      .nth(
-        submitButton.index
-      )
-      .click();
+    const buttonLocator =
+      page
+        .locator(
+          "button, input[type='submit'], input[type='button'], [role='button']"
+        )
+        .nth(paymentButton.index);
 
-    /**
-     * Petite attente pour laisser
-     * la page réagir
-     */
-    await page.waitForTimeout(
-      2500
+    // Attendre les éventuelles requêtes provoquées par le clic
+    const beforeUrl =
+      page.url();
+
+    console.log(
+      "Before click:",
+      beforeUrl
+    );
+
+    await buttonLocator.scrollIntoViewIfNeeded();
+
+    await buttonLocator.click();
+
+    console.log(
+      "Payment button clicked."
+    );
+
+    // Laisser le processus de paiement démarrer
+    await page.waitForTimeout(5000);
+
+    // Attendre encore si la page est toujours active
+    try {
+      await page.waitForLoadState(
+        "networkidle",
+        {
+          timeout: 8000
+        }
+      );
+    } catch {}
+
+    await page.waitForTimeout(3000);
+
+    const finalUrl =
+      page.url();
+
+    const pageTitle =
+      await page.title();
+
+    // Récupérer le texte visible
+    const pageText =
+      await page.locator("body").innerText()
+        .catch(() => "");
+
+    // Limiter la taille du texte retourné
+    const cleanPageText =
+      pageText
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 5000);
+
+    // Détection de messages d'erreur visibles
+    const errorKeywords = [
+      "error",
+      "erreur",
+      "failed",
+      "echec",
+      "échoué",
+      "invalid",
+      "invalide",
+      "declined",
+      "refused",
+      "refusé",
+      "cancelled",
+      "annulé",
+      "expired",
+      "insufficient",
+      "insuffisant"
+    ];
+
+    const detectedErrors = [];
+
+    const normalizedPageText =
+      normalize(cleanPageText);
+
+    for (const keyword of errorKeywords) {
+
+      if (
+        normalizedPageText.includes(
+          normalize(keyword)
+        )
+      ) {
+
+        detectedErrors.push(
+          keyword
+        );
+
+      }
+
+    }
+
+    console.log(
+      "Final URL:",
+      finalUrl
     );
 
     console.log(
-      "Payment button clicked"
+      "Page title:",
+      pageTitle
+    );
+
+    console.log(
+      "Detected errors:",
+      detectedErrors
+    );
+
+    console.log(
+      "Network events:",
+      networkEvents
     );
 
     return res.json({
-
-      success: true,
-
+      success: detectedErrors.length === 0,
       filled,
-
       submitted: true,
-
-      button:
-        submitButton.text,
-
-      finalUrl:
-        page.url(),
-
+      paymentButton:
+        paymentButton.text,
+      beforeUrl,
+      finalUrl,
+      pageTitle,
+      detectedErrors,
+      consoleErrors,
+      pageErrors,
+      networkEvents,
+      pageText: cleanPageText,
       message:
-        "Form submitted successfully"
-
+        detectedErrors.length === 0
+          ? "Payment action executed and page checked"
+          : "Payment action executed but possible error detected"
     });
 
   } catch (error) {
@@ -781,15 +710,9 @@ app.post("/api/automate", async (req, res) => {
     );
 
     return res.status(500).json({
-
       success: false,
-
-      reason:
-        "automation_error",
-
-      message:
-        error.message
-
+      reason: "automation_error",
+      message: error.message
     });
 
   } finally {
@@ -801,17 +724,14 @@ app.post("/api/automate", async (req, res) => {
       } catch {}
 
     }
+
   }
 });
 
-/**
- * Interface de test
- */
 app.get("/tester", (req, res) => {
 
   res.send(`
 <!DOCTYPE html>
-
 <html lang="fr">
 
 <head>
@@ -821,151 +741,89 @@ app.get("/tester", (req, res) => {
 <meta
   name="viewport"
   content="width=device-width, initial-scale=1"
-/>
+>
 
 <title>Botfast Tester</title>
 
 <style>
 
 body {
-
   font-family: Arial, sans-serif;
-
   max-width: 600px;
-
   margin: 40px auto;
-
   padding: 20px;
-
   background: #f5f5f5;
-
 }
 
 .box {
-
   background: white;
-
   padding: 25px;
-
   border-radius: 12px;
-
-  box-shadow:
-    0 2px 10px
-    rgba(0,0,0,.08);
-
+  box-shadow: 0 2px 10px rgba(0,0,0,.08);
 }
 
 h1 {
-
   margin-top: 0;
-
 }
 
 label {
-
   display: block;
-
   margin-top: 15px;
-
   font-weight: bold;
-
 }
 
 input {
-
   width: 100%;
-
   box-sizing: border-box;
-
   padding: 12px;
-
   margin-top: 6px;
-
-  border:
-    1px solid #ccc;
-
+  border: 1px solid #ccc;
   border-radius: 7px;
-
-}
-
-.checkbox {
-
-  display: flex;
-
-  align-items: center;
-
-  gap: 10px;
-
-  margin-top: 20px;
-
-}
-
-.checkbox input {
-
-  width: auto;
-
-  margin: 0;
-
 }
 
 button {
-
   width: 100%;
-
   margin-top: 22px;
-
   padding: 13px;
-
   border: 0;
-
   border-radius: 7px;
-
   background: #111;
-
   color: white;
-
   font-size: 16px;
-
   cursor: pointer;
-
 }
 
 button:disabled {
-
   opacity: .6;
-
 }
 
-.warning {
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+}
 
-  margin-top: 12px;
-
-  padding: 10px;
-
-  background: #fff3cd;
-
-  border-radius: 7px;
-
-  font-size: 14px;
-
+.checkbox input {
+  width: auto;
+  margin: 0;
 }
 
 pre {
-
   margin-top: 20px;
-
   padding: 15px;
-
   background: #111;
-
   color: #0f0;
-
   border-radius: 8px;
-
   white-space: pre-wrap;
-
   overflow-x: auto;
+}
 
+.warning {
+  margin-top: 15px;
+  padding: 12px;
+  background: #fff3cd;
+  border-radius: 8px;
 }
 
 </style>
@@ -986,7 +844,7 @@ URL du formulaire
   id="url"
   type="url"
   placeholder="https://exemple.com/formulaire"
-/>
+>
 
 <label>
 Montant
@@ -996,7 +854,7 @@ Montant
   id="amount"
   type="text"
   placeholder="4000"
-/>
+>
 
 <label>
 Email
@@ -1006,7 +864,7 @@ Email
   id="email"
   type="email"
   placeholder="client@example.com"
-/>
+>
 
 <label>
 Téléphone
@@ -1016,27 +874,29 @@ Téléphone
   id="phone"
   type="text"
   placeholder="690000000"
-/>
+>
 
-<label class="checkbox">
+<div class="checkbox">
 
 <input
   id="submit"
   type="checkbox"
-/>
+>
 
-<span>
+<label
+  for="submit"
+  style="margin:0;"
+>
 Lancer le paiement
-</span>
-
 </label>
+
+</div>
 
 <div class="warning">
 
-⚠️ Si cette case est cochée,
-le bot pourra réellement cliquer
-sur le bouton de paiement trouvé
-sur la page.
+⚠️ Si cette option est cochée,
+le bouton de paiement sera réellement
+cliqué.
 
 </div>
 
@@ -1058,39 +918,39 @@ Résultat du test...
 async function runTest() {
 
   const button =
-    document.getElementById(
-      "testBtn"
-    );
+    document.getElementById("testBtn");
 
   const result =
-    document.getElementById(
-      "result"
-    );
+    document.getElementById("result");
 
   const url =
-    document.getElementById(
-      "url"
-    ).value.trim();
+    document
+      .getElementById("url")
+      .value
+      .trim();
 
   const amount =
-    document.getElementById(
-      "amount"
-    ).value.trim();
+    document
+      .getElementById("amount")
+      .value
+      .trim();
 
   const email =
-    document.getElementById(
-      "email"
-    ).value.trim();
+    document
+      .getElementById("email")
+      .value
+      .trim();
 
   const phone =
-    document.getElementById(
-      "phone"
-    ).value.trim();
+    document
+      .getElementById("phone")
+      .value
+      .trim();
 
   const submit =
-    document.getElementById(
-      "submit"
-    ).checked;
+    document
+      .getElementById("submit")
+      .checked;
 
   if (!url) {
 
@@ -1106,9 +966,7 @@ async function runTest() {
     "⏳ Test en cours...";
 
   result.textContent =
-    submit
-      ? "Ouverture et préparation du paiement..."
-      : "Ouverture du formulaire...";
+    "Ouverture du formulaire...";
 
   try {
 
@@ -1120,30 +978,23 @@ async function runTest() {
           method: "POST",
 
           headers: {
-
             "Content-Type":
               "application/json"
-
           },
 
-          body:
-            JSON.stringify({
+          body: JSON.stringify({
 
-              url,
+            url,
 
-              fields: {
+            fields: {
+              amount,
+              email,
+              phone
+            },
 
-                amount,
+            submit
 
-                email,
-
-                phone
-
-              },
-
-              submit
-
-            })
+          })
 
         }
       );
@@ -1158,20 +1009,15 @@ async function runTest() {
         2
       );
 
-  }
-
-  catch (error) {
+  } catch (error) {
 
     result.textContent =
       "❌ Erreur : " +
       error.message;
 
-  }
+  } finally {
 
-  finally {
-
-    button.disabled =
-      false;
+    button.disabled = false;
 
     button.textContent =
       "Tester le formulaire";
@@ -1188,9 +1034,6 @@ async function runTest() {
   `);
 });
 
-/**
- * Démarrage serveur
- */
 app.listen(
   PORT,
   "0.0.0.0",
@@ -1202,4 +1045,3 @@ app.listen(
 
   }
 );
-
