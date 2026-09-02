@@ -15,7 +15,7 @@ const FAPSHI_API_URL =
 const PAYMENT_NAME = "Junior Kameni";
 const PAYMENT_EMAIL = "antigravity2371@gmail.com";
 
-const MIN_AMOUNT = 4000;
+const MIN_AMOUNT = 100;
 
 // ============================================================
 // MIDDLEWARE
