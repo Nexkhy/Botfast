@@ -18,6 +18,17 @@ function normalize(text = "") {
 }
 
 const aliases = {
+  name: [
+    "name",
+    "full name",
+    "fullname",
+    "nom",
+    "nom complet",
+    "nom et prenom",
+    "customer name",
+    "customer full name"
+  ],
+
   amount: [
     "amount",
     "montant",
@@ -55,7 +66,11 @@ const aliases = {
 function isValidUrl(value) {
   try {
     const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
+
+    return (
+      url.protocol === "http:" ||
+      url.protocol === "https:"
+    );
   } catch {
     return false;
   }
@@ -77,7 +92,8 @@ function scoreField(candidate, requestedName) {
     candidate.id,
     candidate.placeholder,
     candidate.ariaLabel,
-    candidate.label
+    candidate.label,
+    candidate.autocomplete
   ].map(normalize);
 
   const weakProperties = [
@@ -99,7 +115,10 @@ function scoreField(candidate, requestedName) {
     }
 
     for (const property of weakProperties) {
-      if (property && property.includes(word)) {
+      if (
+        property &&
+        property.includes(word)
+      ) {
         score += 15;
       }
     }
@@ -108,19 +127,44 @@ function scoreField(candidate, requestedName) {
   const type = normalize(candidate.type);
   const inputmode = normalize(candidate.inputmode);
 
+  if (key === "name") {
+    if (candidate.autocomplete === "name") {
+      score += 80;
+    }
+
+    if (type === "text") {
+      score += 10;
+    }
+  }
+
   if (key === "email") {
-    if (type === "email") score += 100;
-    if (candidate.autocomplete === "email") score += 60;
+    if (type === "email") {
+      score += 100;
+    }
+
+    if (candidate.autocomplete === "email") {
+      score += 60;
+    }
   }
 
   if (key === "phone") {
-    if (type === "tel") score += 100;
-    if (inputmode === "tel") score += 80;
-    if (candidate.autocomplete === "tel") score += 60;
+    if (type === "tel") {
+      score += 100;
+    }
+
+    if (inputmode === "tel") {
+      score += 80;
+    }
+
+    if (candidate.autocomplete === "tel") {
+      score += 60;
+    }
   }
 
   if (key === "amount") {
-    if (type === "number") score += 60;
+    if (type === "number") {
+      score += 60;
+    }
 
     if (
       inputmode === "numeric" ||
@@ -187,7 +231,10 @@ app.post("/api/automate", async (req, res) => {
       submit = false
     } = req.body;
 
-    if (!url || typeof url !== "string") {
+    if (
+      !url ||
+      typeof url !== "string"
+    ) {
       return res.status(400).json({
         success: false,
         reason: "invalid_url"
@@ -197,7 +244,8 @@ app.post("/api/automate", async (req, res) => {
     if (!isValidUrl(url)) {
       return res.status(400).json({
         success: false,
-        reason: "only_http_https_allowed"
+        reason:
+          "only_http_https_allowed"
       });
     }
 
@@ -213,11 +261,25 @@ app.post("/api/automate", async (req, res) => {
       });
     }
 
-    console.log("=================================");
+    console.log(
+      "================================="
+    );
+
     console.log("Opening:", url);
-    console.log("Requested fields:", Object.keys(fields));
-    console.log("Submit:", submit);
-    console.log("=================================");
+
+    console.log(
+      "Requested fields:",
+      Object.keys(fields)
+    );
+
+    console.log(
+      "Submit:",
+      submit
+    );
+
+    console.log(
+      "================================="
+    );
 
     browser = await chromium.launch({
       headless: true
@@ -232,32 +294,41 @@ app.post("/api/automate", async (req, res) => {
 
     page.setDefaultTimeout(15000);
 
-    // Collecte des erreurs JavaScript
     const consoleErrors = [];
 
     page.on("console", msg => {
       if (msg.type() === "error") {
-        consoleErrors.push(msg.text());
-        console.log("BROWSER ERROR:", msg.text());
+        consoleErrors.push(
+          msg.text()
+        );
+
+        console.log(
+          "BROWSER ERROR:",
+          msg.text()
+        );
       }
     });
 
-    // Collecte des erreurs de page
     const pageErrors = [];
 
     page.on("pageerror", error => {
-      pageErrors.push(error.message);
-      console.log("PAGE ERROR:", error.message);
+      pageErrors.push(
+        error.message
+      );
+
+      console.log(
+        "PAGE ERROR:",
+        error.message
+      );
     });
 
-    // Collecte des requêtes/réponses réseau
     const networkEvents = [];
 
-    page.on("response", async response => {
+    page.on("response", response => {
       try {
-        const responseUrl = response.url();
+        const responseUrl =
+          response.url();
 
-        // On garde surtout les réponses intéressantes
         if (
           /pay|payment|fapshi|transaction|checkout/i.test(
             responseUrl
@@ -265,8 +336,10 @@ app.post("/api/automate", async (req, res) => {
         ) {
           const event = {
             type: "response",
-            status: response.status(),
-            url: responseUrl
+            status:
+              response.status(),
+            url:
+              responseUrl
           };
 
           networkEvents.push(event);
@@ -281,14 +354,18 @@ app.post("/api/automate", async (req, res) => {
     });
 
     await page.goto(url, {
-      waitUntil: "domcontentloaded",
+      waitUntil:
+        "domcontentloaded",
       timeout: 30000
     });
 
     try {
-      await page.waitForLoadState("networkidle", {
-        timeout: 10000
-      });
+      await page.waitForLoadState(
+        "networkidle",
+        {
+          timeout: 10000
+        }
+      );
     } catch {}
 
     await page.waitForTimeout(2000);
@@ -298,118 +375,175 @@ app.post("/api/automate", async (req, res) => {
       await page.title()
     );
 
-    const candidates = await page.locator(
-      "input, textarea, select"
-    ).evaluateAll(elements => {
+    const candidates =
+      await page.locator(
+        "input, textarea, select"
+      ).evaluateAll(elements => {
 
-      const getText = element => {
-        if (!element) return "";
+        const getText = element => {
+          if (!element) return "";
 
-        return (
-          element.innerText ||
-          element.textContent ||
-          ""
-        )
-          .replace(/\s+/g, " ")
-          .trim()
-          .slice(0, 300);
-      };
-
-      return elements.map((el, index) => {
-
-        let label = "";
-
-        if (el.id) {
-          const associated =
-            document.querySelector(
-              `label[for="${CSS.escape(el.id)}"]`
-            );
-
-          if (associated) {
-            label = getText(associated);
-          }
-        }
-
-        const parentLabel =
-          el.closest("label");
-
-        if (!label && parentLabel) {
-          label = getText(parentLabel);
-        }
-
-        const parent =
-          el.parentElement ||
-          el.closest("div");
-
-        const nearbyText = parent
-          ? getText(parent)
-          : "";
-
-        return {
-          index,
-          tag: el.tagName.toLowerCase(),
-          type:
-            el.getAttribute("type") || "",
-          name:
-            el.getAttribute("name") || "",
-          id:
-            el.id || "",
-          placeholder:
-            el.getAttribute("placeholder") || "",
-          ariaLabel:
-            el.getAttribute("aria-label") || "",
-          autocomplete:
-            el.getAttribute("autocomplete") || "",
-          inputmode:
-            el.getAttribute("inputmode") || "",
-          label,
-          parentText: nearbyText,
-          nearbyText,
-          visible:
-            !!(
-              el.offsetWidth ||
-              el.offsetHeight ||
-              el.getClientRects().length
-            ),
-          disabled: el.disabled
+          return (
+            element.innerText ||
+            element.textContent ||
+            ""
+          )
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 300);
         };
+
+        return elements.map(
+          (el, index) => {
+
+            let label = "";
+
+            if (el.id) {
+              const associated =
+                document.querySelector(
+                  `label[for="${CSS.escape(
+                    el.id
+                  )}"]`
+                );
+
+              if (associated) {
+                label =
+                  getText(
+                    associated
+                  );
+              }
+            }
+
+            const parentLabel =
+              el.closest("label");
+
+            if (
+              !label &&
+              parentLabel
+            ) {
+              label =
+                getText(
+                  parentLabel
+                );
+            }
+
+            const parent =
+              el.parentElement ||
+              el.closest("div");
+
+            const nearbyText =
+              parent
+                ? getText(parent)
+                : "";
+
+            return {
+              index,
+
+              tag:
+                el.tagName.toLowerCase(),
+
+              type:
+                el.getAttribute(
+                  "type"
+                ) || "",
+
+              name:
+                el.getAttribute(
+                  "name"
+                ) || "",
+
+              id:
+                el.id || "",
+
+              placeholder:
+                el.getAttribute(
+                  "placeholder"
+                ) || "",
+
+              ariaLabel:
+                el.getAttribute(
+                  "aria-label"
+                ) || "",
+
+              autocomplete:
+                el.getAttribute(
+                  "autocomplete"
+                ) || "",
+
+              inputmode:
+                el.getAttribute(
+                  "inputmode"
+                ) || "",
+
+              label,
+
+              parentText:
+                nearbyText,
+
+              nearbyText,
+
+              visible:
+                !!(
+                  el.offsetWidth ||
+                  el.offsetHeight ||
+                  el.getClientRects()
+                    .length
+                ),
+
+              disabled:
+                el.disabled
+            };
+          }
+        );
       });
-    });
 
     console.log(
       "Detected elements:",
       candidates.length
     );
 
-    const usedIndexes = new Set();
+    const usedIndexes =
+      new Set();
+
     const filled = {};
 
-    for (const [fieldName, value] of Object.entries(fields)) {
+    for (
+      const [fieldName, value]
+      of Object.entries(fields)
+    ) {
 
-      const possible = candidates
-        .filter(candidate =>
-          candidate.visible &&
-          !candidate.disabled &&
-          !usedIndexes.has(candidate.index)
-        )
-        .map(candidate => ({
-          candidate,
-          score: scoreField(
-            candidate,
-            fieldName
+      const possible =
+        candidates
+          .filter(candidate =>
+            candidate.visible &&
+            !candidate.disabled &&
+            !usedIndexes.has(
+              candidate.index
+            )
           )
-        }))
-        .sort(
-          (a, b) =>
-            b.score - a.score
-        );
+          .map(candidate => ({
+            candidate,
 
-      const best = possible[0];
+            score:
+              scoreField(
+                candidate,
+                fieldName
+              )
+          }))
+          .sort(
+            (a, b) =>
+              b.score -
+              a.score
+          );
+
+      const best =
+        possible[0];
 
       if (
         !best ||
         best.score < 30
       ) {
+
         console.log(
           "Field not found:",
           fieldName
@@ -417,7 +551,8 @@ app.post("/api/automate", async (req, res) => {
 
         return res.status(422).json({
           success: false,
-          reason: "field_not_found",
+          reason:
+            "field_not_found",
           field: fieldName
         });
       }
@@ -439,28 +574,33 @@ app.post("/api/automate", async (req, res) => {
           .locator(
             "input, textarea, select"
           )
-          .nth(candidate.index);
+          .nth(
+            candidate.index
+          );
 
-      if (candidate.tag === "select") {
+      if (
+        candidate.tag ===
+        "select"
+      ) {
 
         await locator
           .selectOption({
-            label: String(value)
-          })
-          .catch(async () => {
-
-            await locator.selectOption(
+            label:
               String(value)
-            );
-
-          });
+          })
+          .catch(
+            async () => {
+              await locator.selectOption(
+                String(value)
+              );
+            }
+          );
 
       } else {
 
         await locator.fill(
           String(value)
         );
-
       }
 
       const actualValue =
@@ -477,17 +617,16 @@ app.post("/api/automate", async (req, res) => {
             "field_verification_failed",
           field: fieldName
         });
-
       }
 
       usedIndexes.add(
         candidate.index
       );
 
-      filled[fieldName] = true;
+      filled[fieldName] =
+        true;
     }
 
-    // Si on ne demande pas le paiement
     if (submit !== true) {
 
       return res.json({
@@ -503,38 +642,49 @@ app.post("/api/automate", async (req, res) => {
       "Looking for payment button..."
     );
 
-    // Petit délai pour laisser React mettre à jour le bouton
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(
+      1000
+    );
 
-    const buttons = await page.locator(
-      "button, input[type='submit'], input[type='button'], [role='button']"
-    ).evaluateAll(elements => {
+    const buttons =
+      await page.locator(
+        "button, input[type='submit'], input[type='button'], [role='button']"
+      ).evaluateAll(
+        elements => {
 
-      return elements.map(
-        (el, index) => ({
-          index,
-          text: (
-            el.innerText ||
-            el.value ||
-            el.textContent ||
-            ""
-          )
-            .replace(/\s+/g, " ")
-            .trim(),
-          disabled:
-            el.disabled ||
-            el.getAttribute("aria-disabled") ===
-              "true",
-          visible:
-            !!(
-              el.offsetWidth ||
-              el.offsetHeight ||
-              el.getClientRects().length
-            )
-        })
+          return elements.map(
+            (el, index) => ({
+              index,
+
+              text: (
+                el.innerText ||
+                el.value ||
+                el.textContent ||
+                ""
+              )
+                .replace(
+                  /\s+/g,
+                  " "
+                )
+                .trim(),
+
+              disabled:
+                el.disabled ||
+                el.getAttribute(
+                  "aria-disabled"
+                ) === "true",
+
+              visible:
+                !!(
+                  el.offsetWidth ||
+                  el.offsetHeight ||
+                  el.getClientRects()
+                    .length
+                )
+            })
+          );
+        }
       );
-
-    });
 
     console.log(
       "Buttons detected:",
@@ -545,7 +695,9 @@ app.post("/api/automate", async (req, res) => {
       buttons.find(button =>
         button.visible &&
         !button.disabled &&
-        isPaymentButton(button.text)
+        isPaymentButton(
+          button.text
+        )
       );
 
     if (!paymentButton) {
@@ -557,7 +709,6 @@ app.post("/api/automate", async (req, res) => {
         filled,
         buttons
       });
-
     }
 
     console.log(
@@ -570,18 +721,15 @@ app.post("/api/automate", async (req, res) => {
         .locator(
           "button, input[type='submit'], input[type='button'], [role='button']"
         )
-        .nth(paymentButton.index);
+        .nth(
+          paymentButton.index
+        );
 
-    // Attendre les éventuelles requêtes provoquées par le clic
     const beforeUrl =
       page.url();
 
-    console.log(
-      "Before click:",
-      beforeUrl
-    );
-
-    await buttonLocator.scrollIntoViewIfNeeded();
+    await buttonLocator
+      .scrollIntoViewIfNeeded();
 
     await buttonLocator.click();
 
@@ -589,10 +737,11 @@ app.post("/api/automate", async (req, res) => {
       "Payment button clicked."
     );
 
-    // Laisser le processus de paiement démarrer
-    await page.waitForTimeout(5000);
+    // Attendre le traitement du paiement
+    await page.waitForTimeout(
+      5000
+    );
 
-    // Attendre encore si la page est toujours active
     try {
       await page.waitForLoadState(
         "networkidle",
@@ -602,7 +751,9 @@ app.post("/api/automate", async (req, res) => {
       );
     } catch {}
 
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(
+      3000
+    );
 
     const finalUrl =
       page.url();
@@ -610,19 +761,20 @@ app.post("/api/automate", async (req, res) => {
     const pageTitle =
       await page.title();
 
-    // Récupérer le texte visible
     const pageText =
-      await page.locator("body").innerText()
-        .catch(() => "");
+      await page
+        .locator("body")
+        .innerText()
+        .catch(
+          () => ""
+        );
 
-    // Limiter la taille du texte retourné
     const cleanPageText =
       pageText
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, 5000);
 
-    // Détection de messages d'erreur visibles
     const errorKeywords = [
       "error",
       "erreur",
@@ -644,22 +796,24 @@ app.post("/api/automate", async (req, res) => {
     const detectedErrors = [];
 
     const normalizedPageText =
-      normalize(cleanPageText);
+      normalize(
+        cleanPageText
+      );
 
-    for (const keyword of errorKeywords) {
+    for (
+      const keyword
+      of errorKeywords
+    ) {
 
       if (
         normalizedPageText.includes(
           normalize(keyword)
         )
       ) {
-
         detectedErrors.push(
           keyword
         );
-
       }
-
     }
 
     console.log(
@@ -668,34 +822,38 @@ app.post("/api/automate", async (req, res) => {
     );
 
     console.log(
-      "Page title:",
-      pageTitle
-    );
-
-    console.log(
       "Detected errors:",
       detectedErrors
     );
 
-    console.log(
-      "Network events:",
-      networkEvents
-    );
-
     return res.json({
-      success: detectedErrors.length === 0,
+      success:
+        detectedErrors.length === 0,
+
       filled,
+
       submitted: true,
+
       paymentButton:
         paymentButton.text,
+
       beforeUrl,
+
       finalUrl,
+
       pageTitle,
+
       detectedErrors,
+
       consoleErrors,
+
       pageErrors,
+
       networkEvents,
-      pageText: cleanPageText,
+
+      pageText:
+        cleanPageText,
+
       message:
         detectedErrors.length === 0
           ? "Payment action executed and page checked"
@@ -711,8 +869,10 @@ app.post("/api/automate", async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      reason: "automation_error",
-      message: error.message
+      reason:
+        "automation_error",
+      message:
+        error.message
     });
 
   } finally {
@@ -722,9 +882,7 @@ app.post("/api/automate", async (req, res) => {
       try {
         await browser.close();
       } catch {}
-
     }
-
   }
 });
 
@@ -732,6 +890,7 @@ app.get("/tester", (req, res) => {
 
   res.send(`
 <!DOCTYPE html>
+
 <html lang="fr">
 
 <head>
@@ -809,6 +968,13 @@ button:disabled {
   margin: 0;
 }
 
+.warning {
+  margin-top: 15px;
+  padding: 12px;
+  background: #fff3cd;
+  border-radius: 8px;
+}
+
 pre {
   margin-top: 20px;
   padding: 15px;
@@ -817,13 +983,6 @@ pre {
   border-radius: 8px;
   white-space: pre-wrap;
   overflow-x: auto;
-}
-
-.warning {
-  margin-top: 15px;
-  padding: 12px;
-  background: #fff3cd;
-  border-radius: 8px;
 }
 
 </style>
@@ -835,6 +994,16 @@ pre {
 <div class="box">
 
 <h1>🤖 Botfast Tester</h1>
+
+<label>
+Nom complet
+</label>
+
+<input
+  id="name"
+  type="text"
+  placeholder="Jean Dupont"
+>
 
 <label>
 URL du formulaire
@@ -918,39 +1087,44 @@ Résultat du test...
 async function runTest() {
 
   const button =
-    document.getElementById("testBtn");
+    document.getElementById(
+      "testBtn"
+    );
 
   const result =
-    document.getElementById("result");
+    document.getElementById(
+      "result"
+    );
+
+  const name =
+    document.getElementById(
+      "name"
+    ).value.trim();
 
   const url =
-    document
-      .getElementById("url")
-      .value
-      .trim();
+    document.getElementById(
+      "url"
+    ).value.trim();
 
   const amount =
-    document
-      .getElementById("amount")
-      .value
-      .trim();
+    document.getElementById(
+      "amount"
+    ).value.trim();
 
   const email =
-    document
-      .getElementById("email")
-      .value
-      .trim();
+    document.getElementById(
+      "email"
+    ).value.trim();
 
   const phone =
-    document
-      .getElementById("phone")
-      .value
-      .trim();
+    document.getElementById(
+      "phone"
+    ).value.trim();
 
   const submit =
-    document
-      .getElementById("submit")
-      .checked;
+    document.getElementById(
+      "submit"
+    ).checked;
 
   if (!url) {
 
@@ -987,9 +1161,15 @@ async function runTest() {
             url,
 
             fields: {
+
+              name,
+
               amount,
+
               email,
+
               phone
+
             },
 
             submit
@@ -1021,9 +1201,7 @@ async function runTest() {
 
     button.textContent =
       "Tester le formulaire";
-
   }
-
 }
 
 </script>
