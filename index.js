@@ -430,7 +430,189 @@ app.post("/api/automate", async (req, res) => {
     }
   }
 });
+app.get("/tester", (req, res) => {
+  res.send(`
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Botfast Tester</title>
 
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+
+    .box {
+      background: white;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,.08);
+    }
+
+    h1 {
+      margin-top: 0;
+    }
+
+    label {
+      display: block;
+      margin-top: 15px;
+      font-weight: bold;
+    }
+
+    input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 12px;
+      margin-top: 6px;
+      border: 1px solid #ccc;
+      border-radius: 7px;
+    }
+
+    button {
+      width: 100%;
+      margin-top: 22px;
+      padding: 13px;
+      border: 0;
+      border-radius: 7px;
+      background: #111;
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: .6;
+    }
+
+    pre {
+      margin-top: 20px;
+      padding: 15px;
+      background: #111;
+      color: #0f0;
+      border-radius: 8px;
+      white-space: pre-wrap;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="box">
+
+  <h1>🤖 Botfast Tester</h1>
+
+  <label>URL du formulaire</label>
+  <input
+    id="url"
+    type="url"
+    placeholder="https://exemple.com/formulaire"
+  >
+
+  <label>Montant</label>
+  <input
+    id="amount"
+    type="text"
+    placeholder="4000"
+  >
+
+  <label>Email</label>
+  <input
+    id="email"
+    type="email"
+    placeholder="client@example.com"
+  >
+
+  <label>Téléphone</label>
+  <input
+    id="phone"
+    type="text"
+    placeholder="690000000"
+  >
+
+  <button id="testBtn" onclick="runTest()">
+    Tester le formulaire
+  </button>
+
+  <pre id="result">Résultat du test...</pre>
+
+</div>
+
+<script>
+
+async function runTest() {
+
+  const button = document.getElementById("testBtn");
+  const result = document.getElementById("result");
+
+  const url = document.getElementById("url").value.trim();
+  const amount = document.getElementById("amount").value.trim();
+  const email = document.getElementById("email").value.trim();
+  const phone = document.getElementById("phone").value.trim();
+
+  if (!url) {
+    result.textContent = "❌ Veuillez entrer une URL.";
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = "⏳ Test en cours...";
+  result.textContent = "Ouverture du formulaire...";
+
+  try {
+
+    const response = await fetch("/api/automate", {
+
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json"
+      },
+
+      body: JSON.stringify({
+
+        url: url,
+
+        fields: {
+          amount: amount,
+          email: email,
+          phone: phone
+        }
+
+      })
+
+    });
+
+    const data = await response.json();
+
+    result.textContent =
+      JSON.stringify(data, null, 2);
+
+  } catch (error) {
+
+    result.textContent =
+      "❌ Erreur : " + error.message;
+
+  } finally {
+
+    button.disabled = false;
+    button.textContent = "Tester le formulaire";
+
+  }
+}
+
+</script>
+
+</body>
+</html>
+  `);
+});
 app.listen(PORT, "0.0.0.0", () => {
   console.log(
     `Server running on port ${PORT}`
