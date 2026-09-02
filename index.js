@@ -8,20 +8,12 @@ const PORT = process.env.PORT || 3000;
 // CONFIGURATION
 // ============================================================
 
-const BOT_API_KEY = process.env.BOT_API_KEY || "";
+const FAPSHI_API_URL =
+  process.env.FAPSHI_API_URL || "https://fapshi.com";
 
-const FAPSHI_API_URL ="https://fapshi.com";
-
-const FAPSHI_API_KEY ="FAK_a7c6dfdb7ec1612bbaec4e314ecfacad";
-
-const FAPSHI_API_USER =
-  process.env.FAPSHI_API_USER || "523f8249-0b49-48dc-8dfc-a1395caeb3e9";
-
-// Informations fixes du paiement
 const PAYMENT_NAME = "Junior Kameni";
 const PAYMENT_EMAIL = "antigravity2371@gmail.com";
 
-// Montant minimum
 const MIN_AMOUNT = 4000;
 
 // ============================================================
@@ -63,9 +55,7 @@ function cleanPhone(phone) {
 }
 
 function isValidPhone(phone) {
-  const cleaned = cleanPhone(phone);
-
-  const digits = cleaned.replace(/\D/g, "");
+  const digits = cleanPhone(phone).replace(/\D/g, "");
 
   return digits.length >= 8 && digits.length <= 15;
 }
@@ -75,12 +65,12 @@ function generateExternalId() {
     "BOTFAST-" +
     Date.now() +
     "-" +
-    Math.random().toString(36).substring(2, 10)
+    Math.random().toString(36).substring(2, 8)
   );
 }
 
 // ============================================================
-// DÉTECTION DES CHAMPS
+// ALIAS DES CHAMPS
 // ============================================================
 
 const FIELD_ALIASES = {
@@ -132,6 +122,10 @@ const FIELD_ALIASES = {
   ]
 };
 
+// ============================================================
+// SCORE DES CHAMPS
+// ============================================================
+
 function scoreField(field, type) {
   const aliases = FIELD_ALIASES[type] || [];
 
@@ -153,11 +147,11 @@ function scoreField(field, type) {
 
   for (const value of values) {
     for (const alias of aliases) {
-      const normalizedAlias = normalize(alias);
+      const a = normalize(alias);
 
-      if (value === normalizedAlias) {
+      if (value === a) {
         score += 100;
-      } else if (value.includes(normalizedAlias)) {
+      } else if (value.includes(a)) {
         score += 40;
       }
     }
@@ -165,6 +159,10 @@ function scoreField(field, type) {
 
   return score;
 }
+
+// ============================================================
+// DÉTECTION BOUTON PAIEMENT
+// ============================================================
 
 function isPaymentButton(button) {
   const text = normalize(
@@ -179,7 +177,7 @@ function isPaymentButton(button) {
       .join(" ")
   );
 
-  const paymentWords = [
+  const words = [
     "pay",
     "payer",
     "payment",
@@ -198,36 +196,98 @@ function isPaymentButton(button) {
     "orange"
   ];
 
-  return paymentWords.some((word) =>
+  return words.some((word) =>
     text.includes(normalize(word))
   );
 }
 
 // ============================================================
-// FAPSHI REQUEST
+// REQUÊTE FAPSHI
+//
+// Les identifiants sont reçus à chaque requête.
+// Ils ne sont pas stockés dans Botfast.
 // ============================================================
 
-async function fapshiRequest(method, path, body = undefined) {
+async function fapshiRequest(
+  apiKey,
+  apiUser,
+  method,
+  path,
+  body
+) {
+  if (!apiKey) {
+    throw new Error(
+      "La clé API Fapshi est obligatoire."
+    );
+  }
+
+  if (!apiUser) {
+    throw new Error(
+      "L'API User Fapshi est obligatoire."
+    );
+  }
+
   const url =
-    FAPSHI_API_URL.replace(/\/$/, "") +
-    path;
+    FAPSHI_API_URL.replace(/\/$/, "") + path;
 
   const options = {
     method,
+
     headers: {
       "Content-Type": "application/json",
-      apikey: FAPSHI_API_KEY,
-      apiuser: FAPSHI_API_USER
+
+      apikey: apiKey,
+
+      apiuser: apiUser
     }
   };
 
   if (body !== undefined) {
-    options.body = JSON.stringify(body);
+    options.body =
+      JSON.stringify(body);
   }
 
-  const response = await fetch(url, options);
+  console.log("");
+  console.log("==============================");
+  console.log("REQUÊTE FAPSHI");
+  console.log("==============================");
+  console.log("URL:", url);
+  console.log("METHOD:", method);
 
-  const text = await response.text();
+  // On ne log PAS la clé API.
+  console.log(
+    "API KEY: reçue"
+  );
+
+  console.log(
+    "API USER: reçu"
+  );
+
+  if (body) {
+    console.log(
+      "BODY:",
+      JSON.stringify(body)
+    );
+  }
+
+  const response =
+    await fetch(url, options);
+
+  const text =
+    await response.text();
+
+  console.log(
+    "HTTP:",
+    response.status
+  );
+
+  console.log(
+    "RESPONSE:",
+    text
+  );
+
+  console.log("==============================");
+  console.log("");
 
   let data;
 
@@ -240,13 +300,16 @@ async function fapshiRequest(method, path, body = undefined) {
   }
 
   if (!response.ok) {
-    const error = new Error(
-      data?.message ||
+    const error =
+      new Error(
+        data?.message ||
         data?.error ||
         `Fapshi HTTP ${response.status}`
-    );
+      );
 
-    error.status = response.status;
+    error.status =
+      response.status;
+
     error.data = data;
 
     throw error;
@@ -265,145 +328,231 @@ async function automatePayment({
   submit = true
 }) {
   if (!isValidUrl(url)) {
-    throw new Error("URL de paiement invalide.");
+    throw new Error(
+      "URL de paiement invalide."
+    );
   }
 
   let browser;
 
   try {
-    browser = await chromium.launch({
-      headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage"
-      ]
-    });
+    browser =
+      await chromium.launch({
+        headless: true,
 
-    const page = await browser.newPage({
-      viewport: {
-        width: 1365,
-        height: 900
-      }
-    });
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage"
+        ]
+      });
+
+    const page =
+      await browser.newPage({
+        viewport: {
+          width: 1365,
+          height: 900
+        }
+      });
 
     const consoleErrors = [];
     const pageErrors = [];
 
     page.on("console", (msg) => {
       if (msg.type() === "error") {
-        consoleErrors.push(msg.text());
+        consoleErrors.push(
+          msg.text()
+        );
       }
     });
 
     page.on("pageerror", (error) => {
-      pageErrors.push(String(error));
+      pageErrors.push(
+        String(error)
+      );
     });
 
+    console.log(
+      "Ouverture de:",
+      url
+    );
+
     await page.goto(url, {
-      waitUntil: "domcontentloaded",
+      waitUntil:
+        "domcontentloaded",
       timeout: 60000
     });
 
     try {
-      await page.waitForLoadState("networkidle", {
-        timeout: 15000
-      });
+      await page.waitForLoadState(
+        "networkidle",
+        {
+          timeout: 15000
+        }
+      );
     } catch {
-      // Certaines applications React/Next ne terminent jamais networkidle.
+      // Certaines pages React ne terminent jamais networkidle.
     }
 
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(
+      2000
+    );
 
-    // --------------------------------------------------------
-    // Récupération de tous les champs visibles
-    // --------------------------------------------------------
+    // ========================================================
+    // DÉTECTION DES CHAMPS
+    // ========================================================
 
-    const candidates = await page.locator(
-      "input, textarea, select"
-    ).evaluateAll((elements) => {
-      return elements
-        .filter((el) => {
-          const style = window.getComputedStyle(el);
+    const candidates =
+      await page.locator(
+        "input, textarea, select"
+      ).evaluateAll(
+        (elements) => {
 
-          const rect = el.getBoundingClientRect();
+          return elements
+            .filter((el) => {
 
-          return (
-            style.display !== "none" &&
-            style.visibility !== "hidden" &&
-            rect.width > 0 &&
-            rect.height > 0 &&
-            !el.disabled
-          );
-        })
-        .map((el) => {
-          let label = "";
+              const style =
+                window.getComputedStyle(
+                  el
+                );
 
-          if (el.id) {
-            const labelElement =
-              document.querySelector(
-                `label[for="${CSS.escape(el.id)}"]`
+              const rect =
+                el.getBoundingClientRect();
+
+              return (
+                style.display !==
+                  "none" &&
+
+                style.visibility !==
+                  "hidden" &&
+
+                rect.width > 0 &&
+
+                rect.height > 0 &&
+
+                !el.disabled
               );
+            })
 
-            if (labelElement) {
-              label = labelElement.innerText || "";
-            }
-          }
+            .map((el) => {
 
-          if (!label) {
-            const parent = el.closest("label");
+              let label = "";
 
-            if (parent) {
-              label = parent.innerText || "";
-            }
-          }
+              if (el.id) {
 
-          const parent =
-            el.parentElement?.innerText || "";
+                const labelElement =
+                  document.querySelector(
+                    `label[for="${CSS.escape(el.id)}"]`
+                  );
 
-          return {
-            name: el.getAttribute("name") || "",
-            id: el.id || "",
-            placeholder:
-              el.getAttribute("placeholder") || "",
-            ariaLabel:
-              el.getAttribute("aria-label") || "",
-            autocomplete:
-              el.getAttribute("autocomplete") || "",
-            inputmode:
-              el.getAttribute("inputmode") || "",
-            type:
-              el.getAttribute("type") || "",
-            label,
-            parentText: parent.substring(0, 300),
-            value: el.value || ""
-          };
-        });
-    });
+                if (labelElement) {
+                  label =
+                    labelElement.innerText ||
+                    "";
+                }
+              }
+
+              if (!label) {
+
+                const parent =
+                  el.closest("label");
+
+                if (parent) {
+                  label =
+                    parent.innerText ||
+                    "";
+                }
+              }
+
+              return {
+
+                name:
+                  el.getAttribute(
+                    "name"
+                  ) || "",
+
+                id:
+                  el.id || "",
+
+                placeholder:
+                  el.getAttribute(
+                    "placeholder"
+                  ) || "",
+
+                ariaLabel:
+                  el.getAttribute(
+                    "aria-label"
+                  ) || "",
+
+                autocomplete:
+                  el.getAttribute(
+                    "autocomplete"
+                  ) || "",
+
+                inputmode:
+                  el.getAttribute(
+                    "inputmode"
+                  ) || "",
+
+                type:
+                  el.getAttribute(
+                    "type"
+                  ) || "",
+
+                label,
+
+                parentText:
+                  el.parentElement
+                    ?.innerText
+                    ?.substring(
+                      0,
+                      300
+                    ) || "",
+
+                value:
+                  el.value || ""
+              };
+            });
+        }
+      );
+
+    // ========================================================
+    // SÉLECTION DES MEILLEURS CHAMPS
+    // ========================================================
 
     const selectedFields = {};
 
-    // --------------------------------------------------------
-    // Recherche du meilleur champ pour chaque donnée
-    // --------------------------------------------------------
+    for (
+      const type of [
+        "name",
+        "amount",
+        "email",
+        "phone"
+      ]
+    ) {
 
-    for (const type of [
-      "name",
-      "amount",
-      "email",
-      "phone"
-    ]) {
       let best = null;
       let bestScore = 0;
 
-      for (let i = 0; i < candidates.length; i++) {
-        const score = scoreField(
-          candidates[i],
-          type
-        );
+      for (
+        let i = 0;
+        i < candidates.length;
+        i++
+      ) {
 
-        if (score > bestScore) {
-          bestScore = score;
+        const score =
+          scoreField(
+            candidates[i],
+            type
+          );
+
+        if (
+          score > bestScore
+        ) {
+
+          bestScore =
+            score;
+
           best = {
             index: i,
             ...candidates[i]
@@ -412,6 +561,7 @@ async function automatePayment({
       }
 
       if (best) {
+
         selectedFields[type] = {
           ...best,
           score: bestScore
@@ -419,174 +569,270 @@ async function automatePayment({
       }
     }
 
-    // --------------------------------------------------------
-    // Remplissage
-    // --------------------------------------------------------
+    // ========================================================
+    // REMPLISSAGE
+    // ========================================================
 
     const filled = {};
 
-    for (const type of [
-      "name",
-      "amount",
-      "email",
-      "phone"
-    ]) {
-      const selected = selectedFields[type];
+    for (
+      const type of [
+        "name",
+        "amount",
+        "email",
+        "phone"
+      ]
+    ) {
+
+      const selected =
+        selectedFields[type];
 
       if (!selected) {
         filled[type] = false;
         continue;
       }
 
-      const locator = page.locator(
-        "input, textarea, select"
-      ).nth(selected.index);
-
-      let value = fields[type];
+      const value =
+        fields[type];
 
       if (
         value === undefined ||
         value === null
       ) {
+
         filled[type] = false;
         continue;
       }
 
-      value = String(value);
+      const locator =
+        page.locator(
+          "input, textarea, select"
+        ).nth(
+          selected.index
+        );
 
       try {
-        const tagName =
+
+        const tag =
           await locator.evaluate(
-            (el) => el.tagName.toLowerCase()
+            (el) =>
+              el.tagName
+                .toLowerCase()
           );
 
-        if (tagName === "select") {
+        if (tag === "select") {
+
           try {
+
             await locator.selectOption({
-              label: value
+              label:
+                String(value)
             });
+
           } catch {
-            await locator.selectOption(value);
+
+            await locator.selectOption(
+              String(value)
+            );
           }
+
         } else {
-          await locator.fill(value);
+
+          await locator.fill(
+            String(value)
+          );
         }
 
-        await page.waitForTimeout(300);
+        await page.waitForTimeout(
+          300
+        );
 
-        const currentValue =
+        const current =
           await locator.inputValue();
 
         filled[type] =
-          normalize(currentValue) ===
+          normalize(current) ===
           normalize(value);
+
       } catch {
+
         filled[type] = false;
       }
     }
 
-    // --------------------------------------------------------
-    // Recherche du bouton de paiement
-    // --------------------------------------------------------
+    // ========================================================
+    // RECHERCHE BOUTON
+    // ========================================================
 
-    let paymentButton = null;
-
-    const buttons = await page.locator(
-      "button, input[type='submit'], input[type='button'], [role='button'], a"
-    ).evaluateAll((elements) => {
-      return elements
-        .filter((el) => {
-          const style =
-            window.getComputedStyle(el);
-
-          const rect =
-            el.getBoundingClientRect();
-
-          return (
-            style.display !== "none" &&
-            style.visibility !== "hidden" &&
-            rect.width > 0 &&
-            rect.height > 0
-          );
-        })
-        .map((el) => ({
-          text:
-            el.innerText ||
-            el.textContent ||
-            "",
-          value:
-            el.getAttribute("value") || "",
-          ariaLabel:
-            el.getAttribute("aria-label") || "",
-          title:
-            el.getAttribute("title") || "",
-          name:
-            el.getAttribute("name") || ""
-        }));
-    });
-
-    for (const button of buttons) {
-      if (isPaymentButton(button)) {
-        paymentButton = button;
-        break;
-      }
-    }
-
-    let submitted = false;
-
-    // --------------------------------------------------------
-    // CLICK
-    // --------------------------------------------------------
-
-    if (submit && paymentButton) {
-      const allButtons = page.locator(
+    const buttons =
+      await page.locator(
         "button, input[type='submit'], input[type='button'], [role='button'], a"
-      );
+      ).evaluateAll(
+        (elements) => {
 
-      const count = await allButtons.count();
+          return elements
+            .filter((el) => {
 
-      for (let i = 0; i < count; i++) {
-        const locator = allButtons.nth(i);
+              const style =
+                window.getComputedStyle(
+                  el
+                );
 
-        try {
-          const visible =
-            await locator.isVisible();
+              const rect =
+                el.getBoundingClientRect();
 
-          if (!visible) {
-            continue;
-          }
+              return (
+                style.display !==
+                  "none" &&
 
-          const info =
-            await locator.evaluate((el) => ({
+                style.visibility !==
+                  "hidden" &&
+
+                rect.width > 0 &&
+
+                rect.height > 0
+              );
+            })
+
+            .map((el) => ({
+
               text:
                 el.innerText ||
                 el.textContent ||
                 "",
+
               value:
-                el.getAttribute("value") || "",
+                el.getAttribute(
+                  "value"
+                ) || "",
+
               ariaLabel:
-                el.getAttribute("aria-label") || "",
+                el.getAttribute(
+                  "aria-label"
+                ) || "",
+
               title:
-                el.getAttribute("title") || "",
+                el.getAttribute(
+                  "title"
+                ) || "",
+
               name:
-                el.getAttribute("name") || ""
+                el.getAttribute(
+                  "name"
+                ) || ""
             }));
+        }
+      );
 
-          if (isPaymentButton(info)) {
-            await locator.scrollIntoViewIfNeeded();
+    let paymentButton = null;
 
-            await page.waitForTimeout(500);
+    for (
+      const button of buttons
+    ) {
 
-            await locator.click({
-              timeout: 15000
-            });
+      if (
+        isPaymentButton(button)
+      ) {
 
-            submitted = true;
+        paymentButton =
+          button;
 
-            await page.waitForTimeout(2500);
+        break;
+      }
+    }
 
-            break;
+    // ========================================================
+    // CLIC
+    // ========================================================
+
+    let submitted = false;
+
+    if (
+      submit &&
+      paymentButton
+    ) {
+
+      const allButtons =
+        page.locator(
+          "button, input[type='submit'], input[type='button'], [role='button'], a"
+        );
+
+      const count =
+        await allButtons.count();
+
+      for (
+        let i = 0;
+        i < count;
+        i++
+      ) {
+
+        const locator =
+          allButtons.nth(i);
+
+        try {
+
+          if (
+            !(await locator.isVisible())
+          ) {
+            continue;
           }
+
+          const info =
+            await locator.evaluate(
+              (el) => ({
+
+                text:
+                  el.innerText ||
+                  el.textContent ||
+                  "",
+
+                value:
+                  el.getAttribute(
+                    "value"
+                  ) || "",
+
+                ariaLabel:
+                  el.getAttribute(
+                    "aria-label"
+                  ) || "",
+
+                title:
+                  el.getAttribute(
+                    "title"
+                  ) || "",
+
+                name:
+                  el.getAttribute(
+                    "name"
+                  ) || ""
+              })
+            );
+
+          if (
+            !isPaymentButton(info)
+          ) {
+            continue;
+          }
+
+          await locator
+            .scrollIntoViewIfNeeded();
+
+          await page.waitForTimeout(
+            500
+          );
+
+          await locator.click({
+            timeout: 15000
+          });
+
+          submitted = true;
+
+          await page.waitForTimeout(
+            2500
+          );
+
+          break;
+
         } catch {
           // On essaie le bouton suivant.
         }
@@ -594,19 +840,29 @@ async function automatePayment({
     }
 
     return {
+
       success: true,
+
       filled,
+
       submitted,
+
       paymentButton:
         paymentButton?.text ||
         paymentButton?.value ||
         paymentButton?.ariaLabel ||
         null,
-      finalUrl: page.url(),
+
+      finalUrl:
+        page.url(),
+
       consoleErrors,
+
       pageErrors
     };
+
   } finally {
+
     if (browser) {
       await browser.close();
     }
@@ -614,330 +870,415 @@ async function automatePayment({
 }
 
 // ============================================================
-// ROUTE PRINCIPALE
+// ACCUEIL
 // ============================================================
 
 app.get("/", (req, res) => {
+
   res.json({
     name: "Botfast",
-    status: "running",
-    version: "2.0.0"
+    status: "running"
   });
+
 });
 
 // ============================================================
-// HEALTH CHECK
+// HEALTH
 // ============================================================
 
 app.get("/health", (req, res) => {
+
   res.json({
     status: "healthy"
   });
+
 });
 
 // ============================================================
-// AUTOMATE GÉNÉRIQUE
+// AUTOMATE
 // ============================================================
 
-app.post("/api/automate", async (req, res) => {
-  try {
-    const {
-      url,
-      fields = {},
-      submit = true
-    } = req.body || {};
+app.post(
+  "/api/automate",
+  async (req, res) => {
 
-    if (!url) {
-      return res.status(400).json({
-        success: false,
-        message: "URL obligatoire."
-      });
-    }
+    try {
 
-    const result = await automatePayment({
-      url,
-      fields,
-      submit
-    });
+      const {
+        url,
+        fields = {},
+        submit = true
+      } = req.body || {};
 
-    res.json(result);
-  } catch (error) {
-    console.error(
-      "Erreur /api/automate:",
-      error
-    );
+      if (!url) {
 
-    res.status(500).json({
-      success: false,
-      message:
-        error.message ||
-        "Erreur pendant l'automatisation."
-    });
-  }
-});
-
-// ============================================================
-// INITIATION FAPSHI + AUTOMATISATION
-//
-// IMPORTANT:
-// Cette route NE vérifie PAS le statut du paiement.
-// Elle fait uniquement:
-//
-// 1. Validation
-// 2. initiate-pay Fapshi
-// 3. Récupération du link
-// 4. Ouverture du link avec Playwright
-// 5. Remplissage
-// 6. Clic sur le bouton de paiement
-//
-// FIN.
-// ============================================================
-
-app.post("/api/pay", async (req, res) => {
-  try {
-    const {
-      amount,
-      phone
-    } = req.body || {};
-
-    // --------------------------------------------------------
-    // Validation montant
-    // --------------------------------------------------------
-
-    const numericAmount = Number(amount);
-
-    if (
-      !Number.isFinite(numericAmount) ||
-      numericAmount < MIN_AMOUNT
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          `Le montant minimum est de ${MIN_AMOUNT} FCFA.`
-      });
-    }
-
-    // --------------------------------------------------------
-    // Validation téléphone
-    // --------------------------------------------------------
-
-    if (!isValidPhone(phone)) {
-      return res.status(400).json({
-        success: false,
-        message: "Numéro de téléphone invalide."
-      });
-    }
-
-    const cleanPhoneNumber =
-      cleanPhone(phone);
-
-    const externalId =
-      generateExternalId();
-
-    console.log(
-      "----------------------------------------"
-    );
-
-    console.log(
-      "Nouveau paiement Botfast"
-    );
-
-    console.log(
-      "Montant:",
-      numericAmount
-    );
-
-    console.log(
-      "Téléphone:",
-      cleanPhoneNumber
-    );
-
-    console.log(
-      "External ID:",
-      externalId
-    );
-
-    // --------------------------------------------------------
-    // 1. INITIATION FAPSHI
-    // --------------------------------------------------------
-
-    console.log(
-      "Initiation Fapshi..."
-    );
-
-    const fapshi =
-      await fapshiRequest(
-        "POST",
-        "/initiate-pay",
-        {
-          amount: numericAmount,
-          email: PAYMENT_EMAIL,
-          redirectUrl: "",
-          userId: cleanPhoneNumber,
-          externalId,
-          message:
-            "Paiement " +
-            PAYMENT_NAME
-        }
-      );
-
-    console.log(
-      "Réponse Fapshi reçue."
-    );
-
-    const paymentLink =
-      fapshi?.link;
-
-    const transId =
-      fapshi?.transId;
-
-    if (!paymentLink) {
-      console.error(
-        "Fapshi n'a pas retourné de link:",
-        fapshi
-      );
-
-      return res.status(502).json({
-        success: false,
-        message:
-          "Fapshi n'a pas retourné de lien de paiement.",
-        data: fapshi
-      });
-    }
-
-    // --------------------------------------------------------
-    // 2. AUTOMATISATION DU LIEN FAPSHI
-    // --------------------------------------------------------
-
-    console.log(
-      "Ouverture de la page Fapshi..."
-    );
-
-    const automation =
-      await automatePayment({
-        url: paymentLink,
-
-        fields: {
-          name: PAYMENT_NAME,
-          amount: String(numericAmount),
-          email: PAYMENT_EMAIL,
-          phone: cleanPhoneNumber
-        },
-
-        submit: true
-      });
-
-    console.log(
-      "Automatisation terminée."
-    );
-
-    console.log(
-      "Bouton:",
-      automation.paymentButton
-    );
-
-    console.log(
-      "Submitted:",
-      automation.submitted
-    );
-
-    console.log(
-      "----------------------------------------"
-    );
-
-    // --------------------------------------------------------
-    // RÉPONSE
-    //
-    // Aucun payment-status ici.
-    // --------------------------------------------------------
-
-    return res.json({
-      success: true,
-
-      message:
-        "Paiement Fapshi initié et action de paiement exécutée.",
-
-      transId: transId || null,
-
-      externalId,
-
-      paymentLink,
-
-      amount: numericAmount,
-
-      phone: cleanPhoneNumber,
-
-      automation: {
-        success:
-          automation.success,
-
-        filled:
-          automation.filled,
-
-        submitted:
-          automation.submitted,
-
-        paymentButton:
-          automation.paymentButton,
-
-        finalUrl:
-          automation.finalUrl
+        return res.status(400).json({
+          success: false,
+          error:
+            "URL obligatoire."
+        });
       }
-    });
-  } catch (error) {
-    console.error(
-      "Erreur /api/pay:",
-      error
-    );
 
-    return res.status(500).json({
-      success: false,
-      message:
-        error.message ||
-        "Impossible d'initier le paiement.",
-      details:
-        error.data || null
-    });
+      const result =
+        await automatePayment({
+          url,
+          fields,
+          submit
+        });
+
+      return res.json(result);
+
+    } catch (error) {
+
+      console.error(
+        "Erreur automate:",
+        error.message
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          error.message
+      });
+    }
   }
-});
+);
+
+// ============================================================
+// PAIEMENT FAPSHI
+//
+// LE BACKEND ENVOIE:
+//
+// {
+//   amount,
+//   phone,
+//   fapshiApiKey,
+//   fapshiApiUser
+// }
+//
+// BOTFAST NE STOCKE PAS CES IDENTIFIANTS.
+// ============================================================
+
+app.post(
+  "/api/pay",
+  async (req, res) => {
+
+    try {
+
+      const {
+        amount,
+        phone,
+        fapshiApiKey,
+        fapshiApiUser
+      } = req.body || {};
+
+      // ------------------------------------------------------
+      // VALIDATION
+      // ------------------------------------------------------
+
+      const numericAmount =
+        Number(amount);
+
+      if (
+        !Number.isFinite(
+          numericAmount
+        ) ||
+        numericAmount < MIN_AMOUNT
+      ) {
+
+        return res.status(400).json({
+          success: false,
+          error:
+            `Montant minimum : ${MIN_AMOUNT} FCFA`
+        });
+      }
+
+      if (
+        !isValidPhone(phone)
+      ) {
+
+        return res.status(400).json({
+          success: false,
+          error:
+            "Numéro de téléphone invalide."
+        });
+      }
+
+      if (!fapshiApiKey) {
+
+        return res.status(400).json({
+          success: false,
+          error:
+            "fapshiApiKey obligatoire."
+        });
+      }
+
+      if (!fapshiApiUser) {
+
+        return res.status(400).json({
+          success: false,
+          error:
+            "fapshiApiUser obligatoire."
+        });
+      }
+
+      const cleanPhoneNumber =
+        cleanPhone(phone);
+
+      const externalId =
+        generateExternalId();
+
+      console.log("");
+      console.log(
+        "=============================="
+      );
+
+      console.log(
+        "NOUVEAU PAIEMENT"
+      );
+
+      console.log(
+        "Montant:",
+        numericAmount
+      );
+
+      console.log(
+        "Téléphone:",
+        cleanPhoneNumber
+      );
+
+      console.log(
+        "External ID:",
+        externalId
+      );
+
+      console.log(
+        "Identifiants Fapshi reçus."
+      );
+
+      // ------------------------------------------------------
+      // INITIATE-PAY
+      // ------------------------------------------------------
+
+      const payload = {
+
+        amount:
+          numericAmount,
+
+        email:
+          PAYMENT_EMAIL,
+
+        redirectUrl:
+          "",
+
+        userId:
+          cleanPhoneNumber,
+
+        externalId,
+
+        message:
+          "Paiement " +
+          PAYMENT_NAME
+      };
+
+      const fapshi =
+        await fapshiRequest(
+          fapshiApiKey,
+          fapshiApiUser,
+          "POST",
+          "/initiate-pay",
+          payload
+        );
+
+      // ------------------------------------------------------
+      // LIEN FAPSHI
+      // ------------------------------------------------------
+
+      const paymentLink =
+        fapshi?.link;
+
+      const transId =
+        fapshi?.transId;
+
+      if (!paymentLink) {
+
+        console.error(
+          "Fapshi n'a pas retourné de link."
+        );
+
+        return res.status(502).json({
+
+          success: false,
+
+          error:
+            "Fapshi n'a pas retourné de lien.",
+
+          fapshiResponse:
+            fapshi
+        });
+      }
+
+      console.log(
+        "Lien Fapshi reçu."
+      );
+
+      console.log(
+        "TransId:",
+        transId || "absent"
+      );
+
+      // ------------------------------------------------------
+      // PLAYWRIGHT
+      // ------------------------------------------------------
+
+      const automation =
+        await automatePayment({
+
+          url:
+            paymentLink,
+
+          fields: {
+
+            name:
+              PAYMENT_NAME,
+
+            amount:
+              String(
+                numericAmount
+              ),
+
+            email:
+              PAYMENT_EMAIL,
+
+            phone:
+              cleanPhoneNumber
+          },
+
+          submit: true
+        });
+
+      // ------------------------------------------------------
+      // RÉPONSE
+      // ------------------------------------------------------
+
+      return res.json({
+
+        success: true,
+
+        message:
+          "Paiement initié et page Fapshi automatisée.",
+
+        transId:
+          transId || null,
+
+        externalId,
+
+        paymentLink,
+
+        automation: {
+
+          success:
+            automation.success,
+
+          filled:
+            automation.filled,
+
+          submitted:
+            automation.submitted,
+
+          paymentButton:
+            automation.paymentButton,
+
+          finalUrl:
+            automation.finalUrl
+        }
+      });
+
+    } catch (error) {
+
+      console.error("");
+      console.error(
+        "=============================="
+      );
+
+      console.error(
+        "ERREUR PAIEMENT"
+      );
+
+      console.error(
+        error.message
+      );
+
+      if (error.data) {
+
+        console.error(
+          "Fapshi:",
+          JSON.stringify(
+            error.data,
+            null,
+            2
+          )
+        );
+      }
+
+      console.error(
+        "=============================="
+      );
+
+      return res.status(500).json({
+
+        success: false,
+
+        error:
+          error.message ||
+          "Erreur paiement.",
+
+        fapshiResponse:
+          error.data || null
+      });
+    }
+  }
+);
 
 // ============================================================
 // TESTEUR
 // ============================================================
 
-app.get("/tester", (req, res) => {
-  res.send(`
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+app.get(
+  "/tester",
+  (req, res) => {
 
-<title>Botfast Tester</title>
+    res.send(`
+<!DOCTYPE html>
+
+<html lang="fr">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1.0"
+>
+
+<title>Botfast Test</title>
 
 <style>
-* {
-  box-sizing: border-box;
-}
 
 body {
-  margin: 0;
   font-family: Arial, sans-serif;
-  background: #f4f6f8;
-  color: #222;
-}
-
-.container {
-  max-width: 600px;
-  margin: 40px auto;
+  background: #f3f4f6;
+  margin: 0;
   padding: 20px;
 }
 
 .card {
+  max-width: 500px;
+  margin: auto;
   background: white;
   padding: 25px;
-  border-radius: 14px;
-  box-shadow: 0 5px 25px rgba(0,0,0,.08);
+  border-radius: 12px;
 }
 
 h1 {
@@ -953,9 +1294,10 @@ label {
 
 input {
   width: 100%;
-  padding: 13px;
+  padding: 12px;
+  box-sizing: border-box;
   border: 1px solid #ccc;
-  border-radius: 8px;
+  border-radius: 7px;
   font-size: 16px;
 }
 
@@ -964,55 +1306,64 @@ button {
   padding: 14px;
   margin-top: 20px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 7px;
   background: #111;
   color: white;
   font-size: 16px;
-  cursor: pointer;
 }
 
 button:disabled {
   opacity: .5;
 }
 
-pre {
+#status {
   margin-top: 20px;
   padding: 15px;
-  background: #111;
-  color: #eee;
   border-radius: 8px;
+  background: #eee;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-.info {
-  margin-top: 15px;
-  padding: 12px;
-  background: #fff3cd;
-  border-radius: 8px;
-  font-size: 14px;
+.success {
+  background: #d1fae5 !important;
 }
+
+.error {
+  background: #fee2e2 !important;
+}
+
 </style>
+
 </head>
 
 <body>
 
-<div class="container">
-
 <div class="card">
 
-<h1>🚀 Botfast Tester</h1>
+<h1>🚀 Botfast</h1>
 
 <p>
 Test rapide de l'initiation Fapshi.
 </p>
 
-<div class="info">
-⚠️ Ce test initie réellement un paiement.
-Botfast ne vérifie pas le statut du paiement.
-</div>
+<label>Clé API Fapshi</label>
 
-<label>Montant FCFA</label>
+<input
+  id="apiKey"
+  type="password"
+  placeholder="Colle ta clé API"
+/>
+
+<label>API User Fapshi</label>
+
+<input
+  id="apiUser"
+  type="text"
+  placeholder="Colle ton API User"
+/>
+
+<label>Montant</label>
 
 <input
   id="amount"
@@ -1021,113 +1372,232 @@ Botfast ne vérifie pas le statut du paiement.
   min="4000"
 />
 
-<label>Numéro de téléphone</label>
+<label>Téléphone</label>
 
 <input
   id="phone"
   type="text"
   value="670000000"
-  placeholder="Ex: 670000000"
 />
 
 <button
-  id="payButton"
-  onclick="initPayment()"
+  id="button"
+  onclick="pay()"
 >
 🚀 Initier le paiement
 </button>
 
-<pre id="result">Prêt.</pre>
-
+<div id="status">
+Prêt.
 </div>
 
 </div>
 
 <script>
 
-async function initPayment() {
-
-  const amount =
-    document.getElementById("amount").value;
-
-  const phone =
-    document.getElementById("phone").value;
+async function pay() {
 
   const button =
-    document.getElementById("payButton");
+    document.getElementById(
+      "button"
+    );
 
-  const result =
-    document.getElementById("result");
+  const status =
+    document.getElementById(
+      "status"
+    );
+
+  const apiKey =
+    document.getElementById(
+      "apiKey"
+    ).value;
+
+  const apiUser =
+    document.getElementById(
+      "apiUser"
+    ).value;
+
+  const amount =
+    document.getElementById(
+      "amount"
+    ).value;
+
+  const phone =
+    document.getElementById(
+      "phone"
+    ).value;
+
+  if (!apiKey || !apiUser) {
+
+    status.className =
+      "error";
+
+    status.textContent =
+      "❌ Clé API et API User obligatoires.";
+
+    return;
+  }
 
   button.disabled = true;
 
-  result.textContent =
+  status.className = "";
+
+  status.textContent =
     "⏳ Initiation du paiement...";
 
   try {
 
     const response =
-      await fetch("/api/pay", {
+      await fetch(
+        "/api/pay",
+        {
 
-        method: "POST",
+          method: "POST",
 
-        headers: {
-          "Content-Type":
-            "application/json"
-        },
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
 
-        body: JSON.stringify({
-          amount: amount,
-          phone: phone
-        })
-      });
+          body: JSON.stringify({
+
+            amount,
+
+            phone,
+
+            fapshiApiKey:
+              apiKey,
+
+            fapshiApiUser:
+              apiUser
+
+          })
+
+        }
+      );
 
     const data =
       await response.json();
 
-    result.textContent =
-      JSON.stringify(
-        data,
-        null,
-        2
+    if (!response.ok) {
+
+      status.className =
+        "error";
+
+      status.textContent =
+        "❌ " +
+        (
+          data.error ||
+          "Erreur inconnue."
+        );
+
+      if (
+        data.fapshiResponse
+      ) {
+
+        status.textContent +=
+          "\\n\\nRéponse Fapshi : " +
+          JSON.stringify(
+            data.fapshiResponse
+          );
+      }
+
+      return;
+    }
+
+    status.className =
+      "success";
+
+    status.textContent =
+      "✅ Paiement initié\\n\\n" +
+
+      "TransId : " +
+      (
+        data.transId ||
+        "—"
+      ) +
+
+      "\\n\\nLien :\\n" +
+
+      (
+        data.paymentLink ||
+        "—"
+      ) +
+
+      "\\n\\nBouton : " +
+
+      (
+        data.automation
+          ?.paymentButton ||
+        "—"
+      ) +
+
+      "\\n\\nAction exécutée : " +
+
+      (
+        data.automation
+          ?.submitted
+          ? "Oui"
+          : "Non"
       );
 
   } catch (error) {
 
-    result.textContent =
-      "❌ Erreur : " +
+    status.className =
+      "error";
+
+    status.textContent =
+      "❌ Erreur de connexion :\\n" +
       error.message;
 
   } finally {
 
     button.disabled = false;
+
   }
 }
 
 </script>
 
 </body>
+
 </html>
-  `);
-});
+    `);
+
+  }
+);
 
 // ============================================================
-// ERREUR 404
+// 404
 // ============================================================
 
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: "Route introuvable."
-  });
-});
+app.use(
+  (req, res) => {
+
+    res.status(404).json({
+
+      success: false,
+
+      error:
+        "Route introuvable."
+
+    });
+
+  }
+);
 
 // ============================================================
 // DÉMARRAGE
 // ============================================================
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(
-    `Botfast running on port ${PORT}`
-  );
-});
+app.listen(
+  PORT,
+  "0.0.0.0",
+  () => {
+
+    console.log(
+      `Botfast running on port ${PORT}`
+    );
+
+  }
+);
