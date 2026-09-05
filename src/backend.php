@@ -1,884 +1,528 @@
+<?php
+// backend.php - Interface de paiement dynamique connectée à Botfast API
+$amount = $_GET['amount'] ?? $_GET['montant'] ?? '2000';
+$phone = $_GET['phone'] ?? $_GET['tel'] ?? '';
+$name = $_GET['name'] ?? $_GET['nom'] ?? 'Client';
+$redirectUrl = $_GET['redirect'] ?? $_GET['callback'] ?? '';
+?>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Paiement Mobile Money</title>
+  <title>Paiement Mobile Money Sécurisé</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <style>
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
-      font-family: 'Poppins', sans-serif;
+      font-family: 'Plus Jakarta Sans', sans-serif;
     }
 
     body {
-      background: linear-gradient(135deg, #4facfe, #00f2fe);
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
       display: flex;
       align-items: center;
       justify-content: center;
       min-height: 100vh;
       padding: 20px;
+      color: #f8fafc;
     }
 
-    .payment-container {
-      background: #fff;
-      padding: 30px;
-      border-radius: 20px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.15);
-      max-width: 400px;
-      width: 90%;
+    .payment-card {
+      background: rgba(30, 41, 59, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      padding: 32px 28px;
+      border-radius: 24px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1);
+      max-width: 440px;
+      width: 100%;
       text-align: center;
-      animation: fadeIn 1s ease-in-out;
+      animation: fadeIn 0.6s ease;
     }
 
     @keyframes fadeIn {
-      from {
-        opacity: 0;
-        transform: translateY(20px);
-      }
+      from { opacity: 0; transform: translateY(15px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
 
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
+    .brand-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 12px;
     }
 
     h2 {
+      font-size: 22px;
+      font-weight: 800;
       margin-bottom: 20px;
-      color: #333;
+      background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
     }
 
     .amount-display {
-      background: #f5f5f5;
-      padding: 15px;
-      border-radius: 12px;
-      margin-bottom: 20px;
-      color: #333;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 16px;
+      border-radius: 16px;
+      margin-bottom: 24px;
     }
 
-    .amount-display strong {
-      font-size: 22px;
-      color: #4facfe;
+    .amount-label {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 4px;
     }
 
-    .options {
-      display: flex;
-      justify-content: space-around;
-      margin-bottom: 20px;
+    .amount-val {
+      font-size: 28px;
+      font-weight: 800;
+      color: #38bdf8;
     }
 
-    .option-btn {
-      flex: 1;
-      margin: 0 5px;
-      padding: 12px;
-      border-radius: 10px;
-      border: none;
-      cursor: pointer;
-      background: #eee;
-      transition: 0.3s;
-      font-weight: 600;
-    }
-
-    .option-btn.active,
-    .option-btn:hover {
-      background: #4facfe;
-      color: white;
-    }
-
-    .instructions {
-      margin-top: 20px;
+    .input-group {
       text-align: left;
+      margin-bottom: 18px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #94a3b8;
+      margin-bottom: 6px;
+    }
+
+    .phone-input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .phone-prefix {
+      position: absolute;
+      left: 14px;
       font-size: 14px;
-      color: #555;
-      display: none;
-      animation: fadeIn 0.5s ease-in-out;
-      background: #f8f8f8;
-      padding: 15px;
-      border-radius: 10px;
+      font-weight: 700;
+      color: #64748b;
     }
 
-    .instructions ol {
-      padding-left: 20px;
-    }
-
-    .instructions li {
-      margin-bottom: 10px;
-    }
-
-    .pay-btn,
-    .validate-btn {
-      margin-top: 20px;
+    input[type="tel"], input[type="text"] {
       width: 100%;
-      padding: 15px;
-      border: none;
+      padding: 14px 14px 14px 54px;
+      background: #0f172a;
+      border: 1.5px solid rgba(255, 255, 255, 0.1);
       border-radius: 12px;
       color: #fff;
       font-size: 16px;
       font-weight: 600;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+
+    input[type="tel"]:focus, input[type="text"]:focus {
+      border-color: #38bdf8;
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+    }
+
+    .operator-tags {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+
+    .op-btn {
+      flex: 1;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: #0f172a;
+      color: #94a3b8;
+      font-size: 13px;
+      font-weight: 700;
       cursor: pointer;
-      transition: 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .op-btn.active-orange {
+      border-color: #f97316;
+      background: rgba(249, 115, 22, 0.15);
+      color: #fb923c;
+    }
+
+    .op-btn.active-mtn {
+      border-color: #eab308;
+      background: rgba(234, 179, 8, 0.15);
+      color: #fde047;
     }
 
     .pay-btn {
-      background: #4facfe;
-    }
-
-    .pay-btn:hover {
-      background: #00c6ff;
-    }
-
-    .validate-btn {
-      background: #2196f3;
-    }
-
-    .validate-btn:hover {
-      background: #1976d2;
-    }
-
-    .launch-ussd {
-      margin-top: 10px;
-      display: none;
-      text-decoration: none;
-      background: #ff9500;
-      color: #fff;
-      padding: 12px 20px;
-      border-radius: 10px;
-      font-weight: bold;
-      transition: 0.3s;
-    }
-
-    .launch-ussd:hover {
-      background: #e68a00;
-    }
-
-    /* Section ID transaction */
-
-    .verification-section {
-      display: none;
-      margin-top: 20px;
-      animation: fadeIn 0.5s ease-in-out;
-    }
-
-    .transaction-input {
       width: 100%;
-      padding: 13px;
-      border: 2px solid #ddd;
-      border-radius: 10px;
+      padding: 16px;
+      border: none;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
+      color: #ffffff;
       font-size: 16px;
-      outline: none;
-      transition: 0.3s;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 15px rgba(37, 99, 235, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
     }
 
-    .transaction-input:focus {
-      border-color: #4facfe;
+    .pay-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(37, 99, 235, 0.5);
     }
 
-    /* Messages */
+    .pay-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
 
-    .status-message {
-      margin-top: 15px;
-      padding: 14px;
-      border-radius: 10px;
-      font-size: 14px;
-      font-weight: 600;
+    /* ÉTATS DU PAIEMENT */
+    .status-box {
       display: none;
-      animation: fadeIn 0.5s ease-in-out;
-    }
-
-    .verification-message {
-      background: #fff3cd;
-      color: #856404;
-    }
-
-    .pending-message {
-      background: #e8f4fd;
-      color: #1565c0;
-    }
-
-    /* Service client */
-
-    .support-btn {
-      display: block;
-      width: 100%;
       margin-top: 20px;
-      padding: 13px;
-      background: #333;
-      color: white;
+      padding: 18px;
+      border-radius: 16px;
+      text-align: center;
+      animation: fadeIn 0.4s ease;
+    }
+
+    .status-box.loading {
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      color: #bae6fd;
+    }
+
+    .status-box.waiting-pin {
+      background: rgba(234, 179, 8, 0.12);
+      border: 1px solid rgba(234, 179, 8, 0.4);
+      color: #fef08a;
+    }
+
+    .status-box.success {
+      background: rgba(34, 197, 94, 0.12);
+      border: 1px solid rgba(34, 197, 94, 0.4);
+      color: #86efac;
+    }
+
+    .status-box.error {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #fca5a5;
+    }
+
+    .spinner {
+      width: 28px;
+      height: 28px;
+      border: 3px solid rgba(255, 255, 255, 0.2);
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 12px auto;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .status-title {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .status-desc {
+      font-size: 13px;
+      opacity: 0.9;
+      line-height: 1.4;
+    }
+
+    .trans-badge {
+      display: inline-block;
+      margin-top: 10px;
+      font-family: monospace;
+      font-size: 12px;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 4px 10px;
+      border-radius: 6px;
+    }
+
+    .btn-return {
+      display: inline-block;
+      margin-top: 15px;
+      padding: 10px 20px;
+      background: #22c55e;
+      color: #0f172a;
       text-decoration: none;
       border-radius: 10px;
-      font-weight: 600;
-      transition: 0.3s;
-    }
-
-    .support-btn:hover {
-      background: #111;
-    }
-
-    .error-message {
-      display: none;
-      margin-bottom: 15px;
-      padding: 12px;
-      border-radius: 10px;
-      background: #f8d7da;
-      color: #842029;
+      font-weight: 700;
       font-size: 14px;
-      font-weight: 600;
-    }
-
-    @media(max-width:500px) {
-
-      .options {
-        flex-direction: column;
-      }
-
-      .option-btn {
-        margin: 5px 0;
-      }
-
-      .payment-container {
-        padding: 25px 20px;
-      }
     }
   </style>
 </head>
 
 <body>
 
-  <div class="payment-container">
+  <div class="payment-card">
+    <div class="brand-badge">⚡ Paiement Sécurisé Botfast</div>
+    <h2>Mobile Money Direct</h2>
 
-    <h2>Paiement Mobile Money</h2>
-
-
-    <!-- ============================
-         MONTANT RECUPERE DEPUIS URL
-    ============================= -->
-
+    <!-- Affichage du montant -->
     <div class="amount-display">
-      Montant à payer :
-      <br>
-      <strong id="amountDisplay">Chargement...</strong>
+      <div class="amount-label">Montant total à payer</div>
+      <div class="amount-val" id="amountDisplay">...</div>
     </div>
 
-
-    <!-- ============================
-         MESSAGE ERREUR
-    ============================= -->
-
-    <div
-      class="error-message"
-      id="errorMessage">
-    </div>
-
-
-    <!-- ============================
-         CHOIX OPERATEUR
-    ============================= -->
-
-    <div class="options">
-
-      <button
-        class="option-btn"
-        data-operator="orange">
-        Orange Money
-      </button>
-
-      <button
-        class="option-btn"
-        data-operator="mtn">
-        MTN Money
-      </button>
-
-    </div>
-
-
-    <!-- ============================
-         INSTRUCTIONS
-    ============================= -->
-
-    <div
-      class="instructions"
-      id="instructions">
-    </div>
-
-
-    <!-- ============================
-         BOUTON LANCER PAIEMENT
-    ============================= -->
-
-    <button
-      class="pay-btn"
-      id="payBtn"
-      style="display:none;">
-      Lancer le paiement
-    </button>
-
-
-    <!-- ============================
-         LIEN USSD
-    ============================= -->
-
-    <a
-      href="#"
-      id="ussdLink"
-      class="launch-ussd">
-      Lancer la transaction
-    </a>
-
-
-    <!-- ============================
-         VERIFICATION
-    ============================= -->
-
-    <div
-      class="verification-section"
-      id="verificationSection">
-
-      <input
-        type="text"
-        id="transactionId"
-        class="transaction-input"
-        placeholder="Entrez l'ID de la transaction reçue"
-      >
-
-      <button
-        class="validate-btn"
-        id="validateBtn">
-        Valider le paiement
-      </button>
-
-
-      <!-- Vérification -->
-
-      <div
-        class="status-message verification-message"
-        id="verificationMessage">
-
-        Vérification en cours...
-
+    <!-- Formulaire de paiement -->
+    <form id="paymentForm">
+      <div class="input-group">
+        <label for="phoneNumber">Numéro de téléphone Orange ou MTN</label>
+        <div class="phone-input-wrapper">
+          <span class="phone-prefix">+237</span>
+          <input
+            type="tel"
+            id="phoneNumber"
+            placeholder="6xxxxxxxx"
+            maxlength="9"
+            value="<?php echo htmlspecialchars($phone); ?>"
+            required
+          />
+        </div>
       </div>
 
-
-      <!-- Transaction en attente -->
-
-      <div
-        class="status-message pending-message"
-        id="pendingMessage">
-
-        Transaction toujours en attente.
-
+      <!-- Choix opérateur automatique/manuel -->
+      <div class="operator-tags">
+        <button type="button" class="op-btn" id="btnOrange" data-op="orange">🟠 Orange Money</button>
+        <button type="button" class="op-btn" id="btnMtn" data-op="mtn">🟡 MTN Momo</button>
       </div>
 
+      <button type="submit" class="pay-btn" id="submitPayBtn">
+        <span>⚡ Lancer le paiement</span>
+      </button>
+    </form>
+
+    <!-- Zone de statut & vérification automatique en direct -->
+    <div id="statusContainer" class="status-box">
+      <div class="spinner" id="statusSpinner"></div>
+      <div class="status-title" id="statusTitle">Traitement...</div>
+      <div class="status-desc" id="statusDesc">Envoi de la demande de paiement...</div>
+      <div id="transInfo"></div>
     </div>
-
-
-    <!-- ============================
-         SERVICE CLIENT
-    ============================= -->
-
-    <a
-      href="https://wa.me/237XXXXXXXXX"
-      class="support-btn"
-      target="_blank">
-
-      Contacter le service client
-
-    </a>
-
   </div>
 
-
   <script>
+    // ============================================================
+    // CONFIGURATION DE L'API BOTFAST EN LIGNE
+    // ============================================================
+    const BOTFAST_API_URL = "https://botfast-1-pd5i.onrender.com";
 
-    /*
-    =====================================================
-    CONFIGURATION
+    // Récupération des paramètres PHP / URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const amount = Number(urlParams.get('amount') || urlParams.get('montant') || "<?php echo $amount; ?>");
+    const customerName = urlParams.get('name') || urlParams.get('nom') || "<?php echo htmlspecialchars($name); ?>";
+    const redirectUrl = urlParams.get('redirect') || urlParams.get('callback') || "<?php echo htmlspecialchars($redirectUrl); ?>";
 
-    MODIFIE SEULEMENT CES NUMEROS.
+    // Éléments du DOM
+    const amountDisplay = document.getElementById("amountDisplay");
+    const phoneInput = document.getElementById("phoneNumber");
+    const form = document.getElementById("paymentForm");
+    const submitBtn = document.getElementById("submitPayBtn");
+    const statusBox = document.getElementById("statusContainer");
+    const statusSpinner = document.getElementById("statusSpinner");
+    const statusTitle = document.getElementById("statusTitle");
+    const statusDesc = document.getElementById("statusDesc");
+    const transInfo = document.getElementById("transInfo");
+    const btnOrange = document.getElementById("btnOrange");
+    const btnMtn = document.getElementById("btnMtn");
 
-    Ils seront automatiquement utilisés partout
-    dans le code.
-    =====================================================
-    */
+    // Afficher le montant formaté
+    amountDisplay.textContent = Number(amount).toLocaleString('fr-FR') + ' FCFA';
 
-    const CONFIG = {
+    // Détection automatique de l'opérateur selon les premiers chiffres
+    phoneInput.addEventListener("input", () => {
+      const val = phoneInput.value.replace(/\D/g, "");
+      btnOrange.className = "op-btn";
+      btnMtn.className = "op-btn";
 
-      orangeNumber: "656720564",
+      if (val.startsWith("69") || val.startsWith("655") || val.startsWith("656") || val.startsWith("657") || val.startsWith("658") || val.startsWith("659")) {
+        btnOrange.classList.add("active-orange");
+      } else if (val.startsWith("67") || val.startsWith("68") || val.startsWith("650") || val.startsWith("651") || val.startsWith("652") || val.startsWith("653") || val.startsWith("654")) {
+        btnMtn.classList.add("active-mtn");
+      }
+    });
 
-      mtnNumber: "682004136"
+    btnOrange.addEventListener("click", () => {
+      btnOrange.className = "op-btn active-orange";
+      btnMtn.className = "op-btn";
+    });
 
-    };
+    btnMtn.addEventListener("click", () => {
+      btnMtn.className = "op-btn active-mtn";
+      btnOrange.className = "op-btn";
+    });
 
-
-    /*
-    =====================================================
-    RECUPERATION DU MONTANT DEPUIS L'URL
-    =====================================================
-
-    Exemple :
-
-    paiement.html?amount=2000
-
-    ou
-
-    paiement.html?montant=2000
-
-    Le code accepte les deux.
-    =====================================================
-    */
-
-    const urlParams =
-      new URLSearchParams(window.location.search);
-
-    let amount =
-      urlParams.get('amount') ||
-      urlParams.get('montant');
-
-
-    /*
-    Nettoyage du montant
-    */
-
-    if (amount) {
-
-      amount =
-        amount.replace(/[^\d]/g, '');
-
+    // Helper pour mettre à jour la boîte d'état
+    function updateStatus(type, title, desc, extraHtml = "") {
+      statusBox.className = `status-box ${type}`;
+      statusBox.style.display = "block";
+      statusTitle.textContent = title;
+      statusDesc.textContent = desc;
+      transInfo.innerHTML = extraHtml;
+      statusSpinner.style.display = (type === "loading" || type === "waiting-pin") ? "block" : "none";
     }
 
+    // ============================================================
+    // SOUMISSION & AUTOMATISATION DU PAIEMENT SANS REDIRECTION
+    // ============================================================
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
 
-    /*
-    =====================================================
-    ELEMENTS HTML
-    =====================================================
-    */
-
-    const options =
-      document.querySelectorAll('.option-btn');
-
-    const instructions =
-      document.getElementById('instructions');
-
-    const payBtn =
-      document.getElementById('payBtn');
-
-    const ussdLink =
-      document.getElementById('ussdLink');
-
-    const amountDisplay =
-      document.getElementById('amountDisplay');
-
-    const errorMessage =
-      document.getElementById('errorMessage');
-
-    const verificationSection =
-      document.getElementById('verificationSection');
-
-    const transactionId =
-      document.getElementById('transactionId');
-
-    const validateBtn =
-      document.getElementById('validateBtn');
-
-    const verificationMessage =
-      document.getElementById('verificationMessage');
-
-    const pendingMessage =
-      document.getElementById('pendingMessage');
-
-
-    let selectedOperator = null;
-
-
-    /*
-    =====================================================
-    VERIFICATION DU MONTANT
-    =====================================================
-    */
-
-    if (!amount || Number(amount) <= 0) {
-
-      amountDisplay.textContent =
-        'Montant invalide';
-
-      errorMessage.textContent =
-        'Aucun montant valide n’a été trouvé dans l’URL.';
-
-      errorMessage.style.display =
-        'block';
-
-      options.forEach(btn => {
-
-        btn.disabled = true;
-
-        btn.style.opacity = '0.5';
-
-        btn.style.cursor = 'not-allowed';
-
-      });
-
-    } else {
-
-      /*
-      Afficher le montant
-
-      Exemple :
-      2 000 XAF
-      */
-
-      amountDisplay.textContent =
-        Number(amount).toLocaleString('fr-FR') + ' XAF';
-
-    }
-
-
-    /*
-    =====================================================
-    CONFIGURATION DES ETAPES
-    =====================================================
-    */
-
-    function generateSteps(operator) {
-
-      if (operator === 'orange') {
-
-        return `
-          <ol>
-            <li>
-              Cliquez sur <strong>Lancer le paiement</strong>
-              ci-dessous.
-            </li>
-
-            <li>
-              Si nécessaire, utilisez le code :
-              <br>
-              <strong>
-                #150*1*1*${CONFIG.orangeNumber}*${amount}#
-              </strong>
-            </li>
-
-            <li>
-              Entrez le numéro
-              <strong>${CONFIG.orangeNumber}</strong>
-              lorsque cela est demandé.
-            </li>
-
-            <li>
-              Validez la transaction sur votre téléphone.
-            </li>
-
-            <li>
-              Revenez ensuite sur cette page et entrez
-              l'ID de transaction reçu.
-            </li>
-          </ol>
-        `;
-
+      let phone = phoneInput.value.trim().replace(/\D/g, "");
+      if (phone.length < 8) {
+        alert("Veuillez entrer un numéro de téléphone valide (ex: 671234567).");
+        return;
+      }
+      if (phone.startsWith("237") && phone.length > 9) {
+        phone = phone.substring(3);
       }
 
+      submitBtn.disabled = true;
+      form.style.opacity = "0.4";
+      form.style.pointerEvents = "none";
 
-      return `
-        <ol>
-          <li>
-            Cliquez sur <strong>Lancer le paiement</strong>
-            ci-dessous.
-          </li>
+      updateStatus(
+        "loading",
+        "Connexion à la passerelle...",
+        "Initiation du paiement avec Botfast en arrière-plan..."
+      );
 
-          <li>
-            Si nécessaire, utilisez le code :
-            <br>
-            <strong>
-              *126*9*${CONFIG.mtnNumber}*${amount}#
-            </strong>
-          </li>
-
-          <li>
-            Validez la transaction sur votre téléphone.
-          </li>
-
-          <li>
-            Revenez ensuite sur cette page et entrez
-            l'ID de transaction reçu.
-          </li>
-        </ol>
-      `;
-
-    }
-
-
-    /*
-    =====================================================
-    CHOIX OPERATEUR
-    =====================================================
-    */
-
-    options.forEach(btn => {
-
-      btn.addEventListener('click', () => {
-
-        if (!amount) {
-          return;
-        }
-
-
-        /*
-        Retirer active des autres boutons
-        */
-
-        options.forEach(b => {
-
-          b.classList.remove('active');
-
+      try {
+        // 1. Appel du bot hébergé sur Render
+        const response = await fetch(`${BOTFAST_API_URL}/api/pay`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amount: Number(amount),
+            phone: phone,
+            name: customerName,
+            headless: true
+          })
         });
 
+        const data = await response.json();
 
-        /*
-        Activer le bouton sélectionné
-        */
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || "Impossible d'initier le paiement.");
+        }
 
-        btn.classList.add('active');
+        const transId = data.transId;
 
+        // 2. Le bot a ouvert et validé la page Fapshi ! L'utilisateur doit maintenant taper son PIN.
+        updateStatus(
+          "waiting-pin",
+          "📱 Confirmation demandée sur votre téléphone !",
+          "Un message de paiement (USSD) vient d'être envoyé sur votre téléphone. Veuillez entrer votre code PIN pour valider.",
+          `<div class="trans-badge">Transaction ID : ${transId}</div>`
+        );
 
-        selectedOperator =
-          btn.dataset.operator;
+        // 3. Vérification automatique en direct toutes les 3 secondes (Polling)
+        startVerificationPolling(transId);
 
-
-        /*
-        Afficher les instructions
-        */
-
-        instructions.innerHTML =
-          generateSteps(selectedOperator);
-
-        instructions.style.display =
-          'block';
-
-
-        /*
-        Afficher le bouton
-        */
-
-        payBtn.style.display =
-          'block';
-
-
-        /*
-        Cacher l'ancien lien USSD
-        jusqu'au lancement
-        */
-
-        ussdLink.style.display =
-          'none';
-
-      });
-
+      } catch (error) {
+        console.error("Erreur Botfast:", error);
+        updateStatus("error", "Échec du paiement", error.message);
+        submitBtn.disabled = false;
+        form.style.opacity = "1";
+        form.style.pointerEvents = "auto";
+      }
     });
 
-
-    /*
-    =====================================================
-    LANCER LE PAIEMENT
-    =====================================================
-    */
-
-    payBtn.addEventListener('click', () => {
-
-      if (!selectedOperator) {
-
-        alert(
-          'Veuillez choisir un opérateur.'
-        );
-
-        return;
-      }
-
-
-      if (!amount) {
-
-        alert(
-          'Le montant du paiement est invalide.'
-        );
-
-        return;
-      }
-
-
-      let ussdCode = '';
-
-
-      /*
-      MTN
-      */
-
-      if (selectedOperator === 'mtn') {
-
-        ussdCode =
-          `tel:*126*9*${CONFIG.mtnNumber}*${amount}%23`;
-
-      }
-
-
-      /*
-      ORANGE
-      */
-
-      else {
-
-        ussdCode =
-          `tel:%23150*1*1*${CONFIG.orangeNumber}*${amount}%23`;
-
-      }
-
-
-      /*
-      Préparer le lien USSD
-      */
-
-      ussdLink.href =
-        ussdCode;
-
-
-      /*
-      Lancer automatiquement
-      */
-
-      ussdLink.click();
-
-
-      /*
-      =================================================
-      PASSAGE A L'ETAPE 2
-      =================================================
-      */
-
-      payBtn.style.display =
-        'none';
-
-
-      /*
-      Afficher la zone ID transaction
-      */
-
-      verificationSection.style.display =
-        'block';
-
-
-      /*
-      Le lien USSD reste visible pour permettre
-      à l'utilisateur de relancer la transaction
-      si le premier lancement n'a pas fonctionné.
-      */
-
-      ussdLink.style.display =
-        'inline-block';
-
-
-      /*
-      Modifier le texte du lien
-      */
-
-      ussdLink.textContent =
-        'Relancer la transaction';
-
-
-      /*
-      Focus sur le champ ID
-      */
-
-      setTimeout(() => {
-
-        transactionId.focus();
-
-      }, 300);
-
-    });
-
-
-    /*
-    =====================================================
-    VALIDATION DU PAIEMENT
-    =====================================================
-    */
-
-    validateBtn.addEventListener('click', () => {
-
-      const id =
-        transactionId.value.trim();
-
-
-      /*
-      Vérification ID
-      */
-
-      if (!id) {
-
-        alert(
-          'Veuillez entrer l’ID de la transaction reçue.'
-        );
-
-        transactionId.focus();
-
-        return;
-      }
-
-
-      /*
-      Désactiver le bouton
-      */
-
-      validateBtn.disabled =
-        true;
-
-      validateBtn.style.opacity =
-        '0.6';
-
-      validateBtn.style.cursor =
-        'not-allowed';
-
-
-      /*
-      Afficher vérification
-      */
-
-      verificationMessage.style.display =
-        'block';
-
-
-      /*
-      Cacher le message d'attente
-      */
-
-      pendingMessage.style.display =
-        'none';
-
-
-      /*
-      =================================================
-      SIMULATION DE VERIFICATION
-      =================================================
-
-      IMPORTANT :
-
-      Cette partie doit être remplacée par un appel
-      à ton serveur PHP/API pour vérifier réellement
-      la transaction.
-      */
-
-      setTimeout(() => {
-
-        verificationMessage.style.display =
-          'none';
-
-
-        pendingMessage.style.display =
-          'block';
-
-
+    // ============================================================
+    // VÉRIFICATION AUTOMATIQUE DU STATUT (POLLING SANS RECHARGEMENT)
+    // ============================================================
+    function startVerificationPolling(transId) {
+      let attempts = 0;
+      const maxAttempts = 40; // 40 x 3s = 2 minutes max
+
+      const interval = setInterval(async () => {
+        attempts++;
+
+        try {
+          const res = await fetch(`${BOTFAST_API_URL}/api/status/${encodeURIComponent(transId)}`);
+          const statusData = await res.json();
+
+          if (res.ok && statusData.success) {
+            const status = (statusData.status || "").toUpperCase();
+            const finStatus = (statusData.financialStatus || "").toUpperCase();
+
+            // CAS 1 : SUCCÈS CONFIRMÉ
+            if (status === "SUCCESSFUL" || finStatus === "PAID") {
+              clearInterval(interval);
+              updateStatus(
+                "success",
+                "✅ Paiement validé avec succès !",
+                `Votre transaction de ${Number(amount).toLocaleString('fr-FR')} FCFA a été confirmée.`,
+                redirectUrl
+                  ? `<a href="${redirectUrl}?transId=${transId}&status=success" class="btn-return">Continuer</a>`
+                  : `<div class="trans-badge">Réf: ${transId} • Statut: PAYÉ</div>`
+              );
+              return;
+            }
+
+            // CAS 2 : ÉCHEC OU ANNULATION
+            if (status === "FAILED" || status === "EXPIRED" || finStatus === "FAILED") {
+              clearInterval(interval);
+              updateStatus(
+                "error",
+                "❌ Paiement refusé ou annulé",
+                "La transaction n'a pas été validée sur votre téléphone.",
+                `<button onclick="location.reload()" class="btn-return" style="background:#ef4444;color:#fff;border:none;cursor:pointer;">Réessayer</button>`
+              );
+              return;
+            }
+          }
+        } catch (e) {
+          console.warn("Vérification temporairement inaccessible, nouvelle tentative...", e);
+        }
+
+        // CAS 3 : TIMEOUT APRÈS 2 MINUTES
+        if (attempts >= maxAttempts) {
+          clearInterval(interval);
+          updateStatus(
+            "error",
+            "⏱️ Délai d'attente dépassé",
+            "Vous n'avez pas validé la transaction à temps sur votre téléphone.",
+            `<button onclick="location.reload()" class="btn-return" style="background:#f59e0b;color:#fff;border:none;cursor:pointer;">Recommencer</button>`
+          );
+        }
       }, 3000);
-
-    });
-
+    }
   </script>
 
 </body>

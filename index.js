@@ -1,4 +1,5 @@
 const express = require("express");
+const cors = require("cors");
 const path = require("path");
 const config = require("./src/config");
 const paymentRoutes = require("./src/routes/payment.routes");
@@ -6,8 +7,15 @@ const paymentRoutes = require("./src/routes/payment.routes");
 const app = express();
 
 // ============================================================
-// MIDDLEWARES
+// MIDDLEWARES & CORS (Autorise tous les domaines et requêtes)
 // ============================================================
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "apikey", "apiuser", "x-api-key", "x-api-user"],
+  credentials: false,
+}));
+
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));
 
