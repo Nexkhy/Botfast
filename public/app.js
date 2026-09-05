@@ -2,19 +2,19 @@ document.addEventListener("DOMContentLoaded", () => {
   // Elements Formulaires & Onglets
   const tabButtons = document.querySelectorAll(".tab-btn");
   const tabContents = document.querySelectorAll(".tab-content");
-  
+
   const resTabButtons = document.querySelectorAll(".res-tab-btn");
   const resTabContents = document.querySelectorAll(".res-tab-content");
 
   const fapshiForm = document.getElementById("fapshiForm");
   const statusForm = document.getElementById("statusForm");
   const genericForm = document.getElementById("genericForm");
-  
+
   const apiKeyInput = document.getElementById("apiKey");
   const apiUserInput = document.getElementById("apiUser");
   const statusApiKeyInput = document.getElementById("statusApiKey");
   const statusApiUserInput = document.getElementById("statusApiUser");
-  
+
   const statusBadge = document.getElementById("statusBadge");
   const statusTitle = document.getElementById("statusTitle");
   const statusDesc = document.getElementById("statusDesc");
@@ -22,7 +22,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const liveTerminal = document.getElementById("liveTerminal");
   const btnClearLogs = document.getElementById("btnClearLogs");
   const btnCopyJson = document.getElementById("btnCopyJson");
-  
+
   const summaryCards = document.getElementById("summaryCards");
   const sumTransId = document.getElementById("sumTransId");
   const sumButton = document.getElementById("sumButton");
