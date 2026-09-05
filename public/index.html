@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Botfast Dashboard & Tester</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="navbar">
+      <div class="brand">
+        <div class="brand-icon">⚡</div>
+        <div>
+          <h1>Botfast</h1>
+          <span class="badge">v2.0 • Local Node.js</span>
+        </div>
+      </div>
+      <div class="server-status" id="serverStatusBadge">
+        <span class="status-dot online"></span>
+        <span id="serverStatusText">En ligne</span>
+      </div>
+    </header>
+
+    <!-- Main Grid -->
+    <main class="main-layout">
+      <!-- Left Panel: Controls & Forms -->
+      <section class="panel control-panel">
+        <div class="tab-nav">
+          <button class="tab-btn active" data-tab="fapshiTab">🚀 Paiement Fapshi Live</button>
+          <button class="tab-btn" data-tab="statusTab">🔍 Statut Transaction</button>
+          <button class="tab-btn" data-tab="genericTab">🌐 URL Générique</button>
+        </div>
+
+        <!-- TAB 1: FAPSHI PAY -->
+        <form id="fapshiForm" class="tab-content active">
+          <div class="form-section-title">Identifiants API Fapshi (Optionnels si configurés dans .env)</div>
+          <div class="input-grid">
+            <div class="input-group">
+              <label for="apiKey">Clé API (apiKey)</label>
+              <input type="password" id="apiKey" placeholder="Utilise la clé du .env par défaut" />
+            </div>
+            <div class="input-group">
+              <label for="apiUser">API User</label>
+              <input type="text" id="apiUser" placeholder="Utilise l'API User du .env par défaut" />
+            </div>
+          </div>
+
+          <div class="form-section-title">Détails du Paiement</div>
+          <div class="input-grid">
+            <div class="input-group">
+              <label for="amount">Montant (XAF) <span class="req">*</span></label>
+              <input type="number" id="amount" value="100" min="100" required />
+            </div>
+            <div class="input-group">
+              <label for="phone">Téléphone (Momo/OM) <span class="req">*</span></label>
+              <input type="tel" id="phone" value="670000000" placeholder="ex: 671234567" required />
+            </div>
+          </div>
+
+          <div class="input-grid">
+            <div class="input-group">
+              <label for="customerName">Nom du Client</label>
+              <input type="text" id="customerName" value="Junior Kameni" placeholder="Nom complet" />
+            </div>
+            <div class="input-group">
+              <label for="customerEmail">Email</label>
+              <input type="email" id="customerEmail" value="antigravity2371@gmail.com" placeholder="Email" />
+            </div>
+          </div>
+
+          <div class="input-group checkbox-group">
+            <label class="switch-label">
+              <input type="checkbox" id="showBrowser" />
+              <span class="slider"></span>
+              <span class="switch-text">Ouvrir le navigateur en direct (Mode visible)</span>
+            </label>
+          </div>
+
+          <button type="submit" id="btnPay" class="btn-primary">
+            <span>⚡ Déclencher le Paiement & Automatisation</span>
+          </button>
+        </form>
+
+        <!-- TAB 2: STATUS CHECK -->
+        <form id="statusForm" class="tab-content">
+          <div class="form-section-title">Vérification de Statut Fapshi</div>
+          <div class="input-group">
+            <label for="statusTransId">Identifiant de transaction (transId) <span class="req">*</span></label>
+            <input type="text" id="statusTransId" placeholder="ex: 123456789abc" required />
+          </div>
+          <div class="input-grid">
+            <div class="input-group">
+              <label for="statusApiKey">Clé API (Optionnel si mémorisée)</label>
+              <input type="password" id="statusApiKey" placeholder="Clé API" />
+            </div>
+            <div class="input-group">
+              <label for="statusApiUser">API User (Optionnel si mémorisée)</label>
+              <input type="text" id="statusApiUser" placeholder="API User" />
+            </div>
+          </div>
+          <button type="submit" id="btnCheckStatus" class="btn-primary">
+            <span>🔍 Vérifier le statut</span>
+          </button>
+        </form>
+
+        <!-- TAB 3: GENERIC AUTOMATE -->
+        <form id="genericForm" class="tab-content">
+          <div class="form-section-title">Automatisation de formulaire quelconque</div>
+          <div class="input-group">
+            <label for="genericUrl">URL de la page <span class="req">*</span></label>
+            <input type="url" id="genericUrl" placeholder="https://exemple.com/checkout" required />
+          </div>
+          <div class="input-grid">
+            <div class="input-group">
+              <label for="genName">Nom à injecter</label>
+              <input type="text" id="genName" placeholder="Nom" />
+            </div>
+            <div class="input-group">
+              <label for="genPhone">Téléphone</label>
+              <input type="text" id="genPhone" placeholder="Téléphone" />
+            </div>
+          </div>
+          <div class="input-grid">
+            <div class="input-group">
+              <label for="genAmount">Montant</label>
+              <input type="text" id="genAmount" placeholder="Montant" />
+            </div>
+            <div class="input-group">
+              <label for="genEmail">Email</label>
+              <input type="email" id="genEmail" placeholder="Email" />
+            </div>
+          </div>
+          <div class="input-group checkbox-group">
+            <label class="switch-label">
+              <input type="checkbox" id="genSubmit" checked />
+              <span class="slider"></span>
+              <span class="switch-text">Cliquer automatiquement sur le bouton de paiement</span>
+            </label>
+          </div>
+          <button type="submit" id="btnAutomate" class="btn-primary">
+            <span>🤖 Lancer l'analyse & le bot</span>
+          </button>
+        </form>
+      </section>
+
+      <!-- Right Panel: Live Logs & Results -->
+      <section class="panel result-panel">
+        <div class="result-header">
+          <div class="result-tabs">
+            <button class="res-tab-btn active" data-restab="liveLogTab">⚡ Console Temps Réel</button>
+            <button class="res-tab-btn" data-restab="jsonTab">📄 JSON Détaillé</button>
+          </div>
+          <button id="btnClearLogs" class="btn-secondary">Effacer</button>
+        </div>
+
+        <div id="statusBadge" class="result-status-card idle">
+          <div class="status-indicator"></div>
+          <div>
+            <h3 id="statusTitle">Prêt à tester</h3>
+            <p id="statusDesc">Sélectionnez une action et lancez une requête.</p>
+          </div>
+        </div>
+
+        <div class="summary-cards" id="summaryCards" style="display: none;">
+          <div class="summary-card">
+            <span class="summary-label">TransId</span>
+            <span class="summary-val" id="sumTransId">—</span>
+          </div>
+          <div class="summary-card">
+            <span class="summary-label">Bouton cliqué</span>
+            <span class="summary-val" id="sumButton">—</span>
+          </div>
+          <div class="summary-card">
+            <span class="summary-label">Statut Soumission</span>
+            <span class="summary-val" id="sumSubmitted">—</span>
+          </div>
+        </div>
+
+        <!-- Terminal de Logs Temps Réel -->
+        <div id="liveLogTab" class="res-tab-content active">
+          <div class="terminal-container">
+            <div class="terminal-header">
+              <span class="terminal-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></span>
+              <span class="terminal-title">LIVE STREAMING LOGS</span>
+              <span class="pulse-live"></span>
+            </div>
+            <div id="liveTerminal" class="terminal-body">
+              <div class="terminal-line muted">En attente d'une action... Cliquez sur « Déclencher le Paiement » pour observer les étapes en direct.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Visionneuse JSON -->
+        <div id="jsonTab" class="res-tab-content">
+          <div class="code-viewer-container">
+            <div class="code-viewer-header">
+              <span>RÉPONSE JSON</span>
+              <button id="btnCopyJson" class="btn-copy">Copier JSON</button>
+            </div>
+            <pre id="jsonViewer"><code>// Les résultats des requêtes s'afficheront ici...</code></pre>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
