@@ -1,48 +1,83 @@
-# ⚡ Botfast — Automated Payment & Form Bot
+# Nelsius PaymentBot Microservice
 
-Botfast est une solution d'automatisation de paiement web et de remplissage intelligent de formulaires basée sur **Node.js, Express et Playwright**.
+Microservice de paiement par carte bancaire automatisé (Playwright Chromium / Headless).
+
+Ce projet est **100% indépendant** et peut être hébergé sur n'importe quel serveur (VPS Linux, VPS Windows, Docker) disposant de Node.js v18+.
 
 ---
 
-## 🚀 Démarrage Rapide
+## 🚀 Installation & Démarrage
 
-### 1. Installation
+### 1. Installation des dépendances
 ```bash
 npm install
-npx playwright install chromium
 ```
 
 ### 2. Configuration (`.env`)
-Copiez `.env.example` vers `.env` et ajustez vos paramètres :
+Copiez `.env.example` en `.env` :
+```bash
+cp .env.example .env
+```
+Assurez-vous de définir votre clé d'API secrète :
 ```env
-PORT=3000
-FAPSHI_API_URL=https://live.fapshi.com
-FAPSHI_API_USER=523f8249-0b49-48dc-8dfc-a1395caeb3e9
-FAPSHI_API_KEY=FAK_7d7275a12942d1aa7f6a86e75db4fe37
+PORT=4000
+BOT_API_KEY=nelsius_secret_bot_key_2026
 HEADLESS=true
 ```
 
-### 3. Lancement
+### 3. Lancer le service en mode de production
 ```bash
-npm run dev
-# ou
 npm start
 ```
 
-Le serveur sera accessible sur :
-- **Dashboard Web de Test** : `http://localhost:3000/`
-- **Documentation API** : Consultez le fichier [API_DOCS.md](API_DOCS.md)
+Ou avec PM2 pour un lancement continu en tâche de fond :
+```bash
+npx pm2 start server.js --name "nelsius-payment-bot"
+```
 
 ---
 
-## 📡 Endpoints Principaux
+## 🔒 Sécurité & API Endpoints
 
-- `POST /api/pay` : Initiation de paiement Fapshi + pilotage automatique Playwright.
-- `POST /api/pay/stream` : Même action avec logs diffusés en direct en Server-Sent Events (SSE).
-- `GET /api/status/:transId` : Vérification de l'état d'un paiement en direct.
-- `POST /api/automate` : Automatisation de n'importe quelle page web sur Internet.
+Toutes les requêtes d'API (sauf `/health`) doivent être accompagnées de l'en-tête HTTP :
+`X-API-KEY: <BOT_API_KEY>`
 
----
+### 1. Healthcheck (Test de santé)
+- **Method** : `GET`
+- **URL** : `/health`
 
-## 📄 Licence
-MIT
+**Réponse (200 OK)** :
+```json
+{
+  "status": "ok",
+  "service": "Nelsius PaymentBot Microservice",
+  "timestamp": "2026-09-10T14:40:00.000Z"
+}
+```
+
+### 2. Exécution d'un paiement Carte (`POST /api/v1/process-card`)
+- **Headers** :
+  - `Content-Type: application/json`
+  - `X-API-KEY: nelsius_secret_bot_key_2026`
+- **Body** :
+```json
+{
+  "checkout_url": "https://geniuspay.ci/checkout/MTX-XXXXX",
+  "card_number": "4242424242424242",
+  "card_exp_month": "12",
+  "card_exp_year": "28",
+  "card_cvc": "123",
+  "holder_name": "Client Nelsius",
+  "email": "client@example.com"
+}
+```
+
+**Réponse Réussie (200 OK)** :
+```json
+{
+  "success": false,
+  "status": "DECLINED",
+  "message": "Le paiement par carte bancaire a été refusé par l'émetteur...",
+  "screenshots": [...]
+}
+```
